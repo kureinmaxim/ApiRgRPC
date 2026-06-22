@@ -134,12 +134,25 @@ TCP/IP-транспорт.
 - ✅ Этот документ создан и закоммичен
 
 ### Этап 1 — PoC round-trip по простому интерфейсу (`TCPInterface`)
-- ⬜ Вендоринг/генерация `device_control` прото-стабов в ApiRgRPC (для моста)
-- ⬜ RNS-мост `rns-engine/bridge/` — Destination + `register_request_handler`
-- ⬜ Мост → локальный gRPC к UDP_gRPC_COM_Lite/HA → прото-ответ
-- ⬜ `ReticulumTransport` в UDP_gRPC_COM_Lite (CLI) + переключатель протокола
-- ⬜ Локальный loopback-тест (мост+клиент на `localhost`, round-trip зелёный)
-- ⬜ Прогон на VPS (мост рядом с HA, клиент удалённо), round-trip зелёный
+- ✅ Вендоринг/генерация `device_control` прото-стабов в ApiRgRPC (для моста)
+- ✅ RNS-мост `rns-engine/bridge/` — Destination + `register_request_handler`
+- ✅ Мост → локальный gRPC к UDP_gRPC_COM_Lite/HA → прото-ответ (`GrpcCommandBackend`)
+- ✅ Точка входа моста `rns-engine/bridge/run_bridge.py`
+- ✅ `ReticulumTransport` в UDP_gRPC_COM_Lite (`reticulum_transport/`)
+- ⬜ Переключатель протокола `tcp|reticulum` в CLI UDP_gRPC_COM_Lite (Task 4c)
+- ✅ Локальный loopback-тест round-trip (мост в subprocess + клиент), зелёный ×3
+- ⬜ Прогон на VPS (мост рядом с HA, клиент удалённо), round-trip зелёный (Task 5)
+
+**Реализационные заметки (RNS 1.3.5):**
+- `RNS.Reticulum` — процессный синглтон; линк к destination *своего же* процесса
+  не поднимается. Поэтому loopback-тесты гоняют мост в **отдельном процессе**
+  (TCPServerInterface), а клиент — в тест-процессе (TCPClientInterface). Это
+  ближе к боевой топологии, чем одно-процессный вариант.
+- Каждому интерфейсу в конфиге RNS нужен `interface_enabled = yes`, иначе RNS
+  его пропускает (поднимает 0 интерфейсов).
+- Прото-стабы в UDP_gRPC_COM_Lite лежат в `shared/device_control_pb2.py`
+  (на `sys.path` добавляется `shared/`).
+- Request/response-API RNS 1.3.5 совпал с заложенным в плане без адаптации.
 
 ### Этап 2 — стрим (позже)
 - ⬜ Переиспользовать открытый `Link` для двустороннего потока событий
