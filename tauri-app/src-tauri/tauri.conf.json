@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "ApiRgRPC",
+  "version": "0.1.0",
+  "identifier": "com.apirg.reticulum",
+  "build": {
+    "frontendDist": "../src"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "ApiRgRPC — Reticulum",
+        "width": 980,
+        "height": 720,
+        "minWidth": 760,
+        "minHeight": 560
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Network",
+    "shortDescription": "Reticulum (RNS/LXMF) client",
+    "longDescription": "Censorship-resistant Reticulum messaging client. Tauri shell + Python RNS engine.",
+    "resources": []
+  }
+}

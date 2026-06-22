@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ApiRgRPC — Reticulum</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">🕸️</span>
+        <span class="name">ApiRgRPC</span>
+        <span class="sub">Reticulum / LXMF</span>
+      </div>
+      <div class="engine">
+        <span id="engine-dot" class="dot off"></span>
+        <span id="engine-state">движок остановлен</span>
+        <button id="btn-start" class="btn primary">Запустить</button>
+        <button id="btn-stop" class="btn" disabled>Стоп</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="card identity">
+        <div class="card-title">Моя личность (адрес)</div>
+        <div class="row">
+          <input id="my-address" class="mono" readonly placeholder="— запусти движок —" />
+          <button id="btn-copy" class="btn">Копировать</button>
+          <button id="btn-announce" class="btn">Анонс</button>
+        </div>
+        <div class="row">
+          <input id="my-name" placeholder="Отображаемое имя" />
+          <button id="btn-name" class="btn">Сохранить имя</button>
+        </div>
+        <div id="status-line" class="muted">—</div>
+      </section>
+
+      <section class="card peers">
+        <div class="card-title">Пиры (анонсы LXMF) <span id="peers-count" class="pill">0</span></div>
+        <ul id="peers-list" class="list"></ul>
+      </section>
+
+      <section class="card chat">
+        <div class="card-title">Сообщение</div>
+        <div class="row">
+          <input id="peer-hash" class="mono" placeholder="hex-адрес получателя" />
+        </div>
+        <div class="row">
+          <input id="msg-text" placeholder="Текст сообщения" />
+          <button id="btn-send" class="btn primary">Отправить</button>
+        </div>
+      </section>
+
+      <section class="card log">
+        <div class="card-title">Журнал</div>
+        <div id="log" class="logbox mono"></div>
+      </section>
+    </main>
+
+    <script src="main.js"></script>
+  </body>
+</html>

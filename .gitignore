@@ -1,0 +1,31 @@
+# ---- Rust / Tauri ----
+tauri-app/src-tauri/target/
+tauri-app/src-tauri/gen/
+**/*.rs.bk
+
+# ---- Node ----
+node_modules/
+tauri-app/dist/
+npm-debug.log*
+package-lock.json
+
+# ---- Python engine ----
+__pycache__/
+*.pyc
+rns-engine/build/
+rns-engine/dist/
+rns-engine/*.spec
+.venv/
+venv/
+
+# ---- Reticulum / runtime data (NEVER commit identities/keys) ----
+.reticulum/
+store/
+*.identity
+identity
+
+# ---- OS / editor ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
