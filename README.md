@@ -1,87 +1,204 @@
-# ApiRgRPC — Reticulum (RNS/LXMF) desktop client
+<div align="center">
 
-Цензуроустойчивый клиент на **Reticulum Network Stack**, построенный по образцу
-[`ApiNgRPC`](../ApiNgRPC): **Tauri (Rust) каркас + внешний движок**. Только вместо
-`sing-box` движок здесь — **`rns-engine`** (Python `rns` + `lxmf`), которым
-Rust-сторона управляет через line-delimited JSON по stdin/stdout.
+# 🕸️ ApiRgRPC
 
-> Полный учебник по самому Reticulum (что это, по ОС, сценарии, API) — см.
-> [`Reticulum.md`](Reticulum.md).
+**Цензуроустойчивый десктоп‑клиент для [Reticulum](https://reticulum.network) (RNS / LXMF).**
 
-## Что это и чего НЕ это
-- ✅ зашифрованный обмен сообщениями/данными поверх RNS/LXMF, без DNS/IP и без
-  центральной инфраструктуры; работает поверх TCP / I2P / LoRa.
-- ❌ это **не** VPN/прокси для сёрфинга clearnet (для этого — `ApiNgRPC`/VLESS).
+Tauri‑каркас на Rust + сменный движок `rns-engine` (Python `rns` + `lxmf`),
+управляемый как внешний процесс — по образцу того, как [`ApiNgRPC`](../ApiNgRPC)
+управляет `sing-box`.
+
+![version](https://img.shields.io/badge/version-0.1.0-blue)
+![tauri](https://img.shields.io/badge/Tauri-v2-24c8db)
+![rust](https://img.shields.io/badge/Rust-stable-orange)
+![reticulum](https://img.shields.io/badge/Reticulum-RNS%2FLXMF-7d5fff)
+![status](https://img.shields.io/badge/status-v0%20skeleton-yellow)
+
+</div>
+
+---
+
+## Что это
+
+ApiRgRPC — это клиент **сети Reticulum**: зашифрованный обмен сообщениями и
+данными **без DNS, без IP‑адресов и без центральной инфраструктуры**, поверх чего
+угодно — TCP, I2P, LoRa‑радио. Адресация — по криптографическим хэшам личностей.
+
+| ✅ Для чего он | ❌ Чем он НЕ является |
+|---|---|
+| Устойчивая к цензуре связь (сообщения, файлы, команды) | Это **не** VPN/прокси для сёрфинга clearnet |
+| Работа поверх TCP / **I2P** / **LoRa** | Не «выход в интернет через VPS» (для этого — `ApiNgRPC`/VLESS) |
+| Сквозное шифрование и forward secrecy по умолчанию | Не требует и не использует общий «сервер» |
+
+> 📚 Полный учебник по самому Reticulum (теория, установка по ОС, сценарии, API) —
+> в [`Reticulum.md`](Reticulum.md).
+
+---
+
+## Возможности (v0.1.0)
+
+- 🔑 Стабильная криптоличность (Ed25519/X25519), адрес переживает перезапуск.
+- 📡 Анонс себя в сети и автообнаружение пиров (LXMF announces).
+- ✉️ Приём и отправка LXMF‑сообщений (с подтверждением доставки).
+- 🧭 Живой журнал событий и статус интерфейсов/транспорта.
+- 🧩 Движок изолирован как **сменный sidecar** — позже переписывается на Rust без смены UI.
+
+Дорожная карта — в конце файла.
+
+---
 
 ## Архитектура
+
 ```
-tauri-app/                 # десктоп-клиент (Tauri v2)
-  src/                     # фронтенд (vanilla JS + Tauri global API, без бандлера)
-  src-tauri/
-    src/lib.rs             # bootstrap, состояние, регистрация команд
-    src/engine.rs          # запуск/IPC sidecar-движка (как менеджер sing-box)
-    src/commands.rs        # Tauri-команды: start/stop/status/announce/send/...
-rns-engine/                # Python-движок RNS+LXMF (sidecar)
-  rns_engine.py            # JSON-протокол по stdin/stdout
-  requirements.txt
+┌─────────────────────────────┐   Tauri events "rns-event"   ┌──────────────────────────┐
+│  Frontend (vanilla JS)      │ ◀──────────────────────────── │                          │
+│  index.html · main.js       │                               │                          │
+│  window.__TAURI__           │ ──────────────────────────▶   │   Rust backend (Tauri)   │
+└─────────────────────────────┘   invoke(commands)            │   lib.rs · commands.rs   │
+                                                               │   engine.rs (sidecar mgr)│
+                                                               └────────────┬─────────────┘
+                                                  line‑delimited JSON        │ stdin/stdout
+                                                  (как управление sing-box)  ▼
+                                                               ┌──────────────────────────┐
+                                                               │  rns-engine (Python)     │
+                                                               │  RNS + LXMF              │
+                                                               └────────────┬─────────────┘
+                                                                            ▼
+                                                          Reticulum: TCP · I2P · RNode(LoRa)
 ```
-Поток: `Frontend (JS) → Tauri commands (Rust) → engine.rs → rns-engine (Python) → Reticulum`.
-События из сети идут обратно: `rns-engine (stdout JSON) → engine.rs → Tauri event "rns-event" → Frontend`.
 
-## Что взято лучшее из ApiNgRPC
-- модель «UI + внешний движок-процесс» с управлением через команды/IPC;
-- хранение данных в app-data каталоге ОС;
-- чистая остановка движка при закрытии окна;
-- минимальный фронтенд без тяжёлого фреймворка.
+**Поток данных:** `UI → Tauri command (Rust) → engine.rs → rns-engine (Python) → Reticulum`,
+а сетевые события идут обратно: `rns-engine (stdout JSON) → engine.rs → Tauri event → UI`.
 
-## Предпосылки
-- Rust (stable) + Tauri v2 системные зависимости (WebView2 на Windows).
-- Node.js (для `@tauri-apps/cli`).
-- Python 3.9+ с `rns` и `lxmf` (для dev-режима движок запускается как скрипт).
+### Протокол движка (stdin/stdout JSON)
+| Команда (→ движку) | Событие (← от движка) |
+|---|---|
+| `{"cmd":"address"}` | `{"event":"ready","address":"<hex>"}` |
+| `{"cmd":"announce"}` | `{"event":"announce","hash":"<hex>","name":"…"}` |
+| `{"cmd":"status"}` | `{"event":"status","transport":…,"interfaces":[…]}` |
+| `{"cmd":"send","peer":"<hex>","text":"…"}` | `{"event":"rx","from":"<hex>","text":"…"}` |
+| `{"cmd":"set_name","name":"…"}` | `{"event":"sent","peer":"<hex>","state":"delivered"}` |
 
-## Запуск (dev)
+---
+
+## Технологии
+
+| Слой | Стек |
+|---|---|
+| UI | HTML/CSS + vanilla JS, Tauri global API (без бандлера) |
+| Каркас | **Tauri v2**, Rust (stable) |
+| Движок | **Python** `rns` + `lxmf` (sidecar, упаковывается PyInstaller) |
+| Сеть | Reticulum Network Stack (RNS), LXMF |
+
+---
+
+## Быстрый старт (dev)
+
+Нужно: Rust (+WebView2 на Windows), Node.js, Python 3.9+.
+
 ```bash
-# 1) движок — зависимости
-cd rns-engine && python -m pip install -r requirements.txt && cd ..
+# 1) зависимости движка
+cd rns-engine
+python -m pip install -r requirements.txt
+cd ..
 
 # 2) клиент
 cd tauri-app
 npm install
 npm run tauri dev
 ```
-В dev-режиме `engine.rs` сам запустит `python ../rns-engine/rns_engine.py`
-(fallback), создаст identity и app-data, и нажатие «Запустить» поднимет Reticulum.
 
-Проверка движка отдельно (без UI):
+В dev‑режиме `engine.rs` сам запустит `python ../rns-engine/rns_engine.py`
+(fallback), создаст identity и app‑data. Нажми **«Запустить»** → получишь свой
+RNS‑адрес, сможешь анонсировать себя, видеть пиров и слать сообщения.
+
+Движок отдельно (без UI), для отладки:
 ```bash
 cd rns-engine
-python rns_engine.py --store ./store --config ./.reticulum --name Test
-# в stdin можно слать: {"cmd":"address"}  {"cmd":"announce"}  {"cmd":"status"}
+python rns_engine.py --store ./store --name Test
+# затем в stdin:  {"cmd":"address"}   {"cmd":"announce"}   {"cmd":"status"}
 ```
+
+---
 
 ## Сборка релиза
-```bash
-# 1) собрать движок в один бинарь (PyInstaller)
-cd rns-engine && bash build_engine.sh   # → dist/rns-engine(.exe)
 
-# 2) положить бинарь в ресурсы Tauri и включить в bundle
-#    cp rns-engine/dist/rns-engine* tauri-app/src-tauri/  (или в binaries/)
-#    в tauri.conf.json → "bundle.resources": ["rns-engine*"]
+```bash
+# 1) движок → один бинарь
+cd rns-engine && bash build_engine.sh            # → dist/rns-engine(.exe)
+
+# 2) положить бинарь в ресурсы Tauri:
+cp rns-engine/dist/rns-engine* tauri-app/src-tauri/
+#    и включить в tauri.conf.json:  "bundle": { "resources": ["rns-engine*"] }
 
 # 3) собрать приложение
-cd ../tauri-app && npm run tauri build
+cd tauri-app && npm run tauri build
 ```
-`engine.rs` в релизе сначала ищет бандленный `rns-engine(.exe)` в resource-каталоге,
-и только при отсутствии падает на dev-fallback (`python`).
+В релизе `engine.rs` сначала ищет бандленный `rns-engine(.exe)` в resource‑каталоге,
+и лишь при отсутствии падает на dev‑fallback (`python`).
 
-## Статус
-`v0.1.0` — рабочий каркас: запуск движка, identity/адрес, анонс, приём/отправка
-LXMF-сообщений, список пиров, журнал. Дальше — профили/несколько интерфейсов
-(TCP/I2P/RNode), история, шифрование локального стора, PIN (как в ApiNgRPC).
+---
 
-## TODO (ближайшее)
-- [ ] PyInstaller-сборка движка + бандлинг ресурса + `bundle.resources`.
-- [ ] Иконки (`npm run tauri icon`) — нужны для `tauri build`.
-- [ ] Экран интерфейсов: TCP к VPS / I2P / RNode (запись `~/.reticulum/config`).
-- [ ] Хранение профилей и истории в app-data, PIN-замок (портировать из ApiNgRPC).
-- [ ] Доставка PROPAGATED (через propagation-узлы) для оффлайн-адресатов.
+## Структура проекта
+
+```
+ApiRgRPC/
+├── Reticulum.md              # учебник по Reticulum (теория + API)
+├── README.md
+├── rns-engine/               # Python‑движок (sidecar)
+│   ├── rns_engine.py         #   RNS+LXMF, JSON по stdin/stdout
+│   ├── requirements.txt
+│   └── build_engine.sh       #   PyInstaller → один бинарь
+└── tauri-app/
+    ├── src/                  # фронтенд
+    │   ├── index.html · styles.css · main.js
+    └── src-tauri/
+        ├── src/lib.rs        # bootstrap, состояние, команды
+        ├── src/engine.rs     # запуск/IPC sidecar‑движка
+        ├── src/commands.rs   # Tauri‑команды
+        ├── Cargo.toml · build.rs · tauri.conf.json
+        ├── capabilities/default.json
+        └── icons/
+```
+
+---
+
+## Безопасность
+
+- Весь трафик **E2E‑шифрован** (Reticulum: X25519/Ed25519/AES‑256/HMAC, forward secrecy).
+- Приватный ключ (`identity`) — это «ты»; он **не коммитится** (`.gitignore`) и
+  хранится в app‑data. Не публикуй его.
+- Голый TCP‑интерфейс виден провайдеру как факт соединения (но не содержимое);
+  чтобы скрыть и сам факт — используй **I2P** или радио.
+
+---
+
+## Связь с ApiNgRPC
+
+ApiRgRPC намеренно повторяет проверенную архитектуру `ApiNgRPC` («UI + внешний
+движок‑процесс»), но решает другую задачу: не обход DPI ради clearnet, а
+**устойчивый скрытый канал связи**. Их можно использовать вместе: управляющий
+канал (уведомления/команды) — на Reticulum, пользовательский сёрфинг — на VLESS.
+
+---
+
+## Дорожная карта
+
+- [ ] PyInstaller‑бандлинг движка + `bundle.resources`.
+- [ ] Экран интерфейсов: TCP к VPS / **I2P** / **RNode (LoRa)** (запись `~/.reticulum/config`).
+- [ ] Профили, история сообщений, шифрование локального стора, **PIN‑замок** (портировать из ApiNgRPC).
+- [ ] `PROPAGATED`‑доставка (оффлайн‑адресаты через propagation‑узлы).
+- [ ] Передача файлов (RNS Resource), статусы доставки в UI.
+- [ ] Опционально: нативный Rust‑движок вместо Python (когда стабилизируется).
+
+---
+
+## Лицензия и благодарности
+
+- Reticulum / LXMF — © Mark Qvist, https://reticulum.network
+- ApiRgRPC — © kureinmaxim
+
+## Ссылки
+- Reticulum: https://github.com/markqvist/Reticulum · [Manual](https://markqvist.github.io/Reticulum/manual/)
+- LXMF: https://github.com/markqvist/LXMF
+- Sideband (референс‑клиент): https://github.com/markqvist/Sideband
