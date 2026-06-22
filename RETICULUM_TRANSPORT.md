@@ -49,11 +49,20 @@ TCP/IP-транспорт.
 ### A. Контракт «по проводу» (общий)
 - Источник истины — `device_control.proto` (в UDP_gRPC_COM_Lite). Для моста и
   клиента он вендорится/генерируется в ApiRgRPC.
-- Соглашения Reticulum:
-  - аспекты Destination моста: `apirg` / `bridge` / `devicecontrol`
-    (итоговый app_name+aspects, по которому строится Destination Hash);
-  - путь запроса: `/device_control`;
-  - тело запроса/ответа — сериализованное прото-сообщение (bytes), без обёрток.
+- Соглашения Reticulum (как реализовано):
+  - app_name = `apirgrpc`, aspects = `("bridge", "devicecontrol")`
+    (по ним строится Destination Hash моста, тип IN/SINGLE);
+  - **два пути запроса** на одном Destination:
+    - `"/device_control"` — тело = сериализованный `CommandRequest`, ответ =
+      `CommandResponse` (для команды `device send`, прото → локальный gRPC);
+    - `"/udp_raw"` — тело = **сырые байты** UDP-пакета, ответ = сырой UDP-ответ
+      (для верхнеуровневого `send`; мост форвардит байты UDP-ом на прокси).
+
+**Порты (PoC, localhost):**
+- HA-сервер gRPC `DeviceControlService` — **`127.0.0.1:50055`** (это `--grpc` моста).
+- RNS `TCPServerInterface` моста (listen) — **`127.0.0.1:50061`**; клиент
+  подключается `TCPClientInterface target_port = 50061`.
+- Оба порта вне зарезервированного Windows-диапазона `50508–50607`.
 
 ### B. RNS-мост (приёмник) — **в ApiRgRPC**, `rns-engine/bridge/`
 Отдельный headless-процесс на Python, запускается на VPS рядом с HA.
@@ -138,10 +147,19 @@ TCP/IP-транспорт.
 - ✅ RNS-мост `rns-engine/bridge/` — Destination + `register_request_handler`
 - ✅ Мост → локальный gRPC к UDP_gRPC_COM_Lite/HA → прото-ответ (`GrpcCommandBackend`)
 - ✅ Точка входа моста `rns-engine/bridge/run_bridge.py`
-- ✅ `ReticulumTransport` в UDP_gRPC_COM_Lite (`reticulum_transport/`)
-- ⬜ Переключатель протокола `tcp|reticulum` в CLI UDP_gRPC_COM_Lite (Task 4c)
+- ✅ `ReticulumTransport.send_command` в UDP_gRPC_COM_Lite (`reticulum_transport/`)
+- ✅ Переключатель `--protocol grpc|udp|reticulum` в команде `device send` (Task 4c)
 - ✅ Локальный loopback-тест round-trip (мост в subprocess + клиент), зелёный ×3
-- ⬜ Прогон на VPS (мост рядом с HA, клиент удалённо), round-trip зелёный (Task 5)
+- ⬜ **Второй путь `/udp_raw`** для верхнеуровневого `send` (сырой UDP): raw-обработчик
+  в мосте (форвард байтов UDP-ом на прокси) + `ReticulumTransport.send_raw` +
+  `--protocol reticulum` в верхнеуровневом `send` (Task 4d)
+- ⬜ Прогон на VPS/localhost e2e: мост `--grpc 127.0.0.1:50055`, RNS listen 50061,
+  оба `send` зелёные (Task 5)
+
+### Инфраструктура
+- ⬜ Отслеживание версии приложения «как в ApiNgRPC»: единая версия + скрипты
+  bump/sync по `tauri-app/src-tauri/Cargo.toml`, `tauri.conf.json`,
+  `package.json` + `VERSION_MANAGEMENT.md` (Task INFRA-1)
 
 **Реализационные заметки (RNS 1.3.5):**
 - `RNS.Reticulum` — процессный синглтон; линк к destination *своего же* процесса
