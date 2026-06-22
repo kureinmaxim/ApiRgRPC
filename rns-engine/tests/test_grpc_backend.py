@@ -20,9 +20,9 @@ def _start_fake_server(port):
 
 
 def test_backend_calls_send_command():
-    server = _start_fake_server(50551)
+    server = _start_fake_server(51551)
     try:
-        backend = GrpcCommandBackend("127.0.0.1:50551")
+        backend = GrpcCommandBackend("127.0.0.1:51551")
         resp = backend(pb.CommandRequest(device_id="bz_attenuator_corr"))
         assert resp.status == pb.CommandResponse.SUCCESS
         assert resp.message == "grpc:bz_attenuator_corr"
@@ -32,6 +32,6 @@ def test_backend_calls_send_command():
 
 def test_backend_returns_error_on_unreachable():
     # No server on this port -> backend must return an ERROR CommandResponse, not raise.
-    backend = GrpcCommandBackend("127.0.0.1:50599", timeout=2.0)
+    backend = GrpcCommandBackend("127.0.0.1:51599", timeout=2.0)
     resp = backend(pb.CommandRequest(device_id="x"))
     assert resp.status == pb.CommandResponse.ERROR
