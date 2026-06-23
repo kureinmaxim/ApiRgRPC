@@ -73,6 +73,15 @@ cd C:\Project\ProjectPython\UDP_gRPC_COM_Lite
 | Лампочка (proto, WRITE) | `device send --device mi_bulb --block BU --cmd write --led on --protocol reticulum --bridge-hash <HASH> --rns-config C:/Project/client_rns` | `mi_bulb: power=on, brightness=80` |
 | Сырой UDP (`/udp_raw`) | `send --hex "01 00" --protocol reticulum --bridge-hash <HASH> --rns-config C:/Project/client_rns` | `mi_bulb raw ok` |
 
+**Стрим событий (этап 2)** — отдельным демо-скриптом (не в CLI), из корня
+`UDP_gRPC_COM_Lite`:
+```powershell
+.\.venv\Scripts\python.exe -m reticulum_transport.subscribe_demo `
+  --bridge-hash <HASH> --rns-config C:/Project/client_rns --block BU --max 5
+```
+Ожидание: 5 строк `event: mi_th_sensor type=EVENT_UNKNOWN ... payload='T=23.xC H=45%'`,
+затем `received 5 events`. (Стрим идёт по `RNS.Channel` на открытом Link.)
+
 ## 3. Важные грабли (чек-лист при ошибке)
 
 - **`Could not recognize device`** — старый код; нужен фикс CLI (device_id

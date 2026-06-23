@@ -181,9 +181,13 @@ TCP/IP-транспорт.
   (на `sys.path` добавляется `shared/`).
 - Request/response-API RNS 1.3.5 совпал с заложенным в плане без адаптации.
 
-### Этап 2 — стрим (позже)
-- ⬜ Переиспользовать открытый `Link` для двустороннего потока событий
-- ⬜ Сопоставить с текущим gRPC-стримом
+### Этап 2 — стрим ✅
+- ✅ Стрим `DeviceEvent` поверх `RNS.Channel` на открытом Link
+  (`SubscribeMessage`/`DeviceEventMessage`); мост форвардит gRPC `SubscribeEvents`
+- ✅ Стаб `SubscribeEvents` (5 периодических событий), `GrpcCommandBackend.subscribe_events`
+- ✅ Клиент `ReticulumTransport.subscribe_events` + `subscribe_demo.py`
+- ✅ Loopback-тесты зелёные (мост: `test_event_stream.py`; клиент: `test_reticulum_subscribe.py`)
+- ⬜ Прогон стрима на VPS (после чистой переустановки ha_stack)
 
 ### Этап 3 — I2P (позже)
 - ⬜ `i2pd` + SAM на VPS и локально
