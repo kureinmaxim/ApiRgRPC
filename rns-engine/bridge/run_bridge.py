@@ -36,10 +36,12 @@ def main() -> None:
 
     backend = GrpcCommandBackend(args.grpc)
     bridge = DeviceControlBridge(args.config, args.storage, handler=backend,
-                                 udp_target=udp_target)
+                                 udp_target=udp_target,
+                                 event_streamer=backend.subscribe_events)
     bridge.start()
     print(f"bridge up, destination = {bridge.destination.hash.hex()}", flush=True)
     print(f"grpc backend = {args.grpc}", flush=True)
+    print("event stream /subscribe enabled (RNS Channel)", flush=True)
     if udp_target:
         print(f"udp path /udp_raw enabled -> {udp_target[0]}:{udp_target[1]}", flush=True)
     else:

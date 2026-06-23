@@ -18,3 +18,14 @@ class GrpcCommandBackend:
             code = exc.code().name if exc.code() else "UNKNOWN"
             return pb.CommandResponse(status=pb.CommandResponse.ERROR,
                                       message=f"grpc error: {code}")
+
+    def subscribe_events(self, req: pb.EventSubscribeRequest):
+        """Стрим (этап 2): открыть канал, вызвать gRPC SubscribeEvents и отдавать
+        DeviceEvent по мере прихода. Канал держится открытым на время итерации."""
+        channel = grpc.insecure_channel(self._target)
+        stub = pbg.DeviceControlServiceStub(channel)
+        try:
+            for event in stub.SubscribeEvents(req):
+                yield event
+        finally:
+            channel.close()
