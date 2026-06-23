@@ -21,7 +21,10 @@ venv/
 # ---- Reticulum / runtime data (NEVER commit identities/keys) ----
 .reticulum/
 store/
+_rnscfg/
+_rnsdata/
 *.identity
+*identity
 identity
 
 # ---- OS / editor ----
