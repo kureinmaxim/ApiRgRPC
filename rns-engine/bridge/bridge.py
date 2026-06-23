@@ -1,8 +1,18 @@
 """RNS bridge: receives CommandRequest over Reticulum, returns CommandResponse.
-Transport (TCP now, I2P later) is set by the RNS config (configdir); this code is transport-agnostic."""
+
+Unary (этап 1): request_handler'ы /device_control (прото) и /udp_raw (сырой UDP).
+Стрим (этап 2): поверх RNS.Channel на установленном Link — клиент шлёт
+SubscribeMessage, мост форвардит поток DeviceEvent (из event_streamer) обратно
+DeviceEventMessage'ами.
+
+Транспорт (TCP сейчас, I2P позже) задаётся конфигом RNS (configdir); код
+транспортно-агностичен."""
 import os
 import socket
-from typing import Callable, Optional, Tuple
+import threading
+import time
+from typing import Callable, Iterable, Optional, Tuple
+
 import RNS
 from proto import device_control_pb2 as pb
 
@@ -10,17 +20,50 @@ APP_NAME = "apirgrpc"
 ASPECTS = ("bridge", "devicecontrol")
 REQUEST_PATH = "/device_control"
 REQUEST_PATH_UDP = "/udp_raw"
+
 CommandHandler = Callable[[pb.CommandRequest], pb.CommandResponse]
+# event_streamer: по EventSubscribeRequest отдаёт поток DeviceEvent (напр. gRPC SubscribeEvents).
+EventStreamer = Callable[[pb.EventSubscribeRequest], Iterable[pb.DeviceEvent]]
+
+
+class SubscribeMessage(RNS.MessageBase):
+    """Клиент → мост: подписаться на события (data = serialized EventSubscribeRequest)."""
+    MSGTYPE = 0x0021
+
+    def __init__(self, data: bytes = b""):
+        self.data = data
+
+    def pack(self) -> bytes:
+        return self.data
+
+    def unpack(self, raw: bytes) -> None:
+        self.data = raw or b""
+
+
+class DeviceEventMessage(RNS.MessageBase):
+    """Мост → клиент: одно событие (data = serialized DeviceEvent)."""
+    MSGTYPE = 0x0022
+
+    def __init__(self, data: bytes = b""):
+        self.data = data
+
+    def pack(self) -> bytes:
+        return self.data
+
+    def unpack(self, raw: bytes) -> None:
+        self.data = raw or b""
 
 
 class DeviceControlBridge:
     def __init__(self, configdir: str, storagepath: str, handler: CommandHandler,
                  udp_target: Optional[Tuple[str, int]] = None,
-                 udp_timeout: float = 5.0):
+                 udp_timeout: float = 5.0,
+                 event_streamer: Optional[EventStreamer] = None):
         os.makedirs(storagepath, exist_ok=True)
         self._handler = handler
         self._udp_target = udp_target
         self._udp_timeout = udp_timeout
+        self._event_streamer = event_streamer
         self.reticulum = RNS.Reticulum(configdir=configdir)
         id_path = os.path.join(storagepath, "bridge_identity")
         if os.path.isfile(id_path):
@@ -32,15 +75,18 @@ class DeviceControlBridge:
             RNS.Destination.SINGLE, APP_NAME, *ASPECTS)
         self.destination.register_request_handler(REQUEST_PATH,
             response_generator=self._on_request, allow=RNS.Destination.ALLOW_ALL)
-        # Optional raw-UDP forwarding path: tunnels raw bytes over Reticulum to a
-        # configured UDP proxy target and returns the single datagram reply.
+        # Optional raw-UDP forwarding path.
         if self._udp_target is not None:
             self.destination.register_request_handler(REQUEST_PATH_UDP,
                 response_generator=self._on_udp_request, allow=RNS.Destination.ALLOW_ALL)
+        # Optional event-stream path (этап 2): настраиваем Channel при установке Link.
+        if self._event_streamer is not None:
+            self.destination.set_link_established_callback(self._on_link_established)
 
     def start(self) -> None:
         self.destination.announce()
 
+    # ---- unary -------------------------------------------------------------
     def _on_request(self, path, data, request_id, link_id, remote_identity, requested_at):
         req = pb.CommandRequest()
         try:
@@ -51,11 +97,8 @@ class DeviceControlBridge:
         return self._handler(req).SerializeToString()
 
     def _on_udp_request(self, path, data, request_id, link_id, remote_identity, requested_at):
-        """Forward raw bytes to the UDP proxy target and return the reply.
-
-        Uses a fresh UDP socket per request, waits up to ``udp_timeout`` for one
-        datagram reply, and returns its bytes. Returns b"" on timeout/error
-        rather than raising, so a missing reply does not break the RNS link."""
+        """Forward raw bytes to the UDP proxy target and return the single reply
+        (b"" on timeout/error, чтобы не рвать Link)."""
         host, port = self._udp_target
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
@@ -67,3 +110,32 @@ class DeviceControlBridge:
             return b""
         finally:
             sock.close()
+
+    # ---- streaming (этап 2) ------------------------------------------------
+    def _on_link_established(self, link) -> None:
+        channel = link.get_channel()
+        channel.register_message_type(SubscribeMessage)
+        channel.register_message_type(DeviceEventMessage)
+        channel.add_message_handler(lambda msg: self._on_channel_message(channel, msg))
+
+    def _on_channel_message(self, channel, message) -> bool:
+        if isinstance(message, SubscribeMessage):
+            req = pb.EventSubscribeRequest()
+            try:
+                req.ParseFromString(message.data or b"")
+            except Exception:
+                req = pb.EventSubscribeRequest()
+            threading.Thread(target=self._forward_events, args=(channel, req), daemon=True).start()
+            return True
+        return False
+
+    def _forward_events(self, channel, req: pb.EventSubscribeRequest) -> None:
+        try:
+            for event in self._event_streamer(req):
+                # backpressure: ждём окно отправки канала
+                deadline = time.time() + 10
+                while not channel.is_ready_to_send() and time.time() < deadline:
+                    time.sleep(0.05)
+                channel.send(DeviceEventMessage(event.SerializeToString()))
+        except Exception as exc:
+            RNS.log(f"event stream ended/failed: {exc}", RNS.LOG_ERROR)
