@@ -205,5 +205,62 @@ TCP/IP-транспорт.
 
 ---
 
+## 9. Этап 2 — стрим (дизайн, к реализации)
+
+**Цель:** двусторонний/серверный поток событий поверх Reticulum — зеркало gRPC
+`SubscribeEvents(EventSubscribeRequest) returns (stream DeviceEvent)`.
+
+**Примитив RNS:** держать открытый `RNS.Link` и гонять по нему поток через
+**`RNS.Channel` + `RNS.Buffer`** (в RNS 1.x — надёжный байтовый канал поверх
+Link). Либо слать по Link length-prefixed сериализованные `DeviceEvent`.
+
+**Компоненты:**
+- **Стаб** `stub_server.py`: реализовать `SubscribeEvents` — периодически (раз в
+  N сек) отдавать `DeviceEvent` (напр. показания `mi_th_sensor`), для теста.
+- **Мост** (`bridge/`): на запрос подписки открыть `RNS.Link`, поднять
+  `Channel/Buffer`, локально вызвать gRPC `SubscribeEvents` и **форвардить**
+  каждый `DeviceEvent` в Buffer клиента. Закрытие Link → закрыть gRPC-стрим.
+- **Клиент** (`ReticulumTransport.subscribe_events()`): открыть Link, подписаться,
+  читать `DeviceEvent` по мере прихода (callback/generator).
+
+**PoC-критерий:** клиент получает несколько `DeviceEvent` подряд по Reticulum.
+**Реализовывать** отдельным циклом brainstorm → writing-plans → код (это фича, не
+конфиг). Транспорт (TCP/I2P) на стрим не влияет.
+
+## 10. Этап 3 — I2P (процедура, код не меняется)
+
+Снимает боль с SSH-туннелем (публичный порт не нужен). Нужен **i2pd с SAM API**
+на ОБОИХ концах.
+
+**1. i2pd + SAM:**
+- VPS: `apt install -y i2pd`; в `/etc/i2pd/i2pd.conf` секция `[sam] enabled = true`
+  (порт 7656); `systemctl enable --now i2pd`.
+- Клиент (Windows): установить i2pd, включить SAM (7656).
+
+**2. RNS-конфиг — заменить TCP-интерфейс на I2P:**
+- Мост (`ha_stack/rns/config`):
+  ```
+  [[I2P]]
+    type = I2PInterface
+    interface_enabled = yes
+  ```
+  RNS при старте логирует **I2P b32-адрес** моста — забрать из
+  `journalctl -u ha-reticulum-bridge`.
+- Клиент (`client_rns/config`):
+  ```
+  [[I2P]]
+    type = I2PInterface
+    interface_enabled = yes
+    peers = <bridge_i2p_b32>
+  ```
+
+**3.** Перезапустить мост и клиента. `--bridge-hash` тот же (RNS-identity не
+меняется). Первый коннект медленный (I2P строит туннели 30–120 c). Публичный порт
+закрыть (`listen_ip` назад на 127.0.0.1 не нужен — I2P не слушает TCP наружу).
+
+> Команды/режимы теста — в [RETICULUM_TESTING.md](RETICULUM_TESTING.md).
+
+---
+
 *Документ ведётся по ходу работы: при смене статуса этапа обновляйте чек-лист
 в разделе 7.*
