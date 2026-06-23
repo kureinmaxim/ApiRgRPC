@@ -25,13 +25,25 @@ def main() -> None:
     parser.add_argument("--config", required=True, help="configdir для RNS")
     parser.add_argument("--storage", required=True,
                         help="storagepath (хранит стабильную identity моста)")
+    parser.add_argument("--udp-target", default=None,
+                        help="HOST:PORT UDP-прокси для пути /udp_raw (опционально)")
     args = parser.parse_args()
 
+    udp_target = None
+    if args.udp_target:
+        host, _, port = args.udp_target.rpartition(":")
+        udp_target = (host, int(port))
+
     backend = GrpcCommandBackend(args.grpc)
-    bridge = DeviceControlBridge(args.config, args.storage, handler=backend)
+    bridge = DeviceControlBridge(args.config, args.storage, handler=backend,
+                                 udp_target=udp_target)
     bridge.start()
     print(f"bridge up, destination = {bridge.destination.hash.hex()}", flush=True)
     print(f"grpc backend = {args.grpc}", flush=True)
+    if udp_target:
+        print(f"udp path /udp_raw enabled -> {udp_target[0]}:{udp_target[1]}", flush=True)
+    else:
+        print("udp path /udp_raw disabled (no --udp-target)", flush=True)
 
     while True:
         time.sleep(ANNOUNCE_INTERVAL)
