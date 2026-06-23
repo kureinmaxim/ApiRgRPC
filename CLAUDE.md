@@ -18,6 +18,8 @@ Reticulum-клиента (v0.1.0).
 - **[RETICULUM_TRANSPORT.md](RETICULUM_TRANSPORT.md) — план, дизайн, этапы и
   текущий статус работы по второму транспорту (Reticulum/I2P) для HA-сервера.**
   Живой документ: при смене статуса этапа обновляйте чек-лист (раздел 7).
+- [RETICULUM_TESTING.md](RETICULUM_TESTING.md) — как гонять e2e-тесты сейчас
+  (режимы связи, команды, грабли). Проверено в проде 2026-06-23.
 - [VERSION_MANAGEMENT.md](VERSION_MANAGEMENT.md) — схема версионирования и `scripts/version.py` (status/check/sync/bump/set).
 
 ## Связанный проект
