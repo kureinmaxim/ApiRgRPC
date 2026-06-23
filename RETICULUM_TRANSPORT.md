@@ -154,8 +154,16 @@ TCP/IP-транспорт.
   в мосте (форвард байтов UDP-ом на прокси, Task 4d-A) + `ReticulumTransport.send_raw`
   + `--protocol udp|reticulum` в верхнеуровневом `send` (Task 4d-B); loopback и
   routing-тесты зелёные
-- ⬜ Прогон на VPS/localhost e2e: мост `--grpc 127.0.0.1:50055`, RNS listen 50061,
-  оба `send` зелёные на реальном сервисе (Task 5 — ручной шаг, см. runbook)
+- ✅ **Прогон на боевом VPS (Task 5):** `device send --protocol reticulum`
+  (`mi_th_sensor`) вернул `T=23.5C H=45%` через Reticulum на удалённый VPS
+  (мост `--grpc 127.0.0.1:50055`, RNS listen 50061). Прото-round-trip доказан в
+  проде 2026-06-23.
+  - Нюанс: SSH-туннель к VPS (Eurohoster) **флапал** (соединение рвётся, даже с
+    `ssh -N -o ServerAliveInterval`), давая `WinError 10061`. Для теста временно
+    открыли `listen_ip=0.0.0.0` + `ufw allow 50061` и ходили **напрямую** на
+    публичный IP. Трафик Reticulum шифрован, gRPC-стаб остался на localhost.
+    Для боевого режима — вернуть `127.0.0.1` + туннель (или перейти на I2P, этап 3,
+    где публичный порт вообще не нужен).
 
 ### Инфраструктура
 - ✅ Отслеживание версии приложения «как в ApiNgRPC»: `scripts/version.py`
