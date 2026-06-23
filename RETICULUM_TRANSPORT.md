@@ -150,16 +150,17 @@ TCP/IP-транспорт.
 - ✅ `ReticulumTransport.send_command` в UDP_gRPC_COM_Lite (`reticulum_transport/`)
 - ✅ Переключатель `--protocol grpc|udp|reticulum` в команде `device send` (Task 4c)
 - ✅ Локальный loopback-тест round-trip (мост в subprocess + клиент), зелёный ×3
-- ⬜ **Второй путь `/udp_raw`** для верхнеуровневого `send` (сырой UDP): raw-обработчик
-  в мосте (форвард байтов UDP-ом на прокси) + `ReticulumTransport.send_raw` +
-  `--protocol reticulum` в верхнеуровневом `send` (Task 4d)
+- ✅ **Второй путь `/udp_raw`** для верхнеуровневого `send` (сырой UDP): raw-обработчик
+  в мосте (форвард байтов UDP-ом на прокси, Task 4d-A) + `ReticulumTransport.send_raw`
+  + `--protocol udp|reticulum` в верхнеуровневом `send` (Task 4d-B); loopback и
+  routing-тесты зелёные
 - ⬜ Прогон на VPS/localhost e2e: мост `--grpc 127.0.0.1:50055`, RNS listen 50061,
-  оба `send` зелёные (Task 5)
+  оба `send` зелёные на реальном сервисе (Task 5 — ручной шаг, см. runbook)
 
 ### Инфраструктура
-- ⬜ Отслеживание версии приложения «как в ApiNgRPC»: единая версия + скрипты
-  bump/sync по `tauri-app/src-tauri/Cargo.toml`, `tauri.conf.json`,
-  `package.json` + `VERSION_MANAGEMENT.md` (Task INFRA-1)
+- ✅ Отслеживание версии приложения «как в ApiNgRPC»: `scripts/version.py`
+  (status/check/sync/bump/set) синхронизирует версию по `tauri-app/*` +
+  `VERSION_MANAGEMENT.md` (Task INFRA-1)
 
 **Реализационные заметки (RNS 1.3.5):**
 - `RNS.Reticulum` — процессный синглтон; линк к destination *своего же* процесса
