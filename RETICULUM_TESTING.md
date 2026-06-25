@@ -14,7 +14,65 @@ ss -tlnp | grep 50061                                              # мост с
 journalctl -u ha-reticulum-bridge -n 5 --no-pager | grep destination
 #   -> bridge up, destination = <BRIDGE_HASH>   (стабилен между рестартами)
 ```
-Запомни `<BRIDGE_HASH>` (напр. `d46bed01f4654bda8d07b6c97a030af9`).
+Запомни `<BRIDGE_HASH>` (напр. `12bbf2cd888546cf78bc76112e0b3bbe`, актуальный на 2026-06-25).
+> ⚠️ Хэш меняется при пересоздании RNS-identity (переустановка `ha_stack`, удаление конфига). Всегда читай актуальный из `journalctl`.
+
+**Remote CLI gRPC сервер** — на VPS дополнительно поднят `remote_cli.server` из
+`~/UDP_gRPC_COM_Lite` (Python 3.11, `.venv`, `grpcio 1.81.1`, `protobuf 6.33.6`).
+
+Токен задаётся через `env`-переменные. Три способа запустить сервер на VPS:
+
+**Вариант 1 — foreground (для отладки, умрёт при закрытии терминала):**
+```bash
+cd ~/UDP_gRPC_COM_Lite && source .venv/bin/activate
+export SHSKM_REMOTE_CLI_TOKEN='change-this-token'
+export SHSKM_REMOTE_CLI_REQUIRE_TOKEN=true
+python -m remote_cli.server --host 0.0.0.0 --port 18090
+# → Remote CLI gRPC server listening on 0.0.0.0:18090
+```
+Если сервер уже запущен в foreground и нужно удержать его живым без перезапуска:
+```bash
+# Ctrl+Z  — приостановить
+bg        # перевести в фон
+disown    # отвязать от сессии (выживет после закрытия Tabby)
+```
+
+**Вариант 2 — nohup (быстрый фон, лог в файл):**
+```bash
+cd ~/UDP_gRPC_COM_Lite && source .venv/bin/activate
+export SHSKM_REMOTE_CLI_TOKEN='change-this-token'
+export SHSKM_REMOTE_CLI_REQUIRE_TOKEN=true
+nohup python -m remote_cli.server --host 0.0.0.0 --port 18090 \
+  >> ~/UDP_gRPC_COM_Lite/logs/remote_cli.log 2>&1 &
+echo $!   # запомни PID
+# остановить: kill <PID>  или  pkill -f remote_cli.server
+```
+
+**Вариант 3 — systemd (надёжно, автостарт после ребута):**
+```ini
+# /etc/systemd/system/remote-cli.service
+[Unit]
+Description=Remote CLI gRPC server (UDP_gRPC_COM_Lite)
+After=network.target
+
+[Service]
+WorkingDirectory=/root/UDP_gRPC_COM_Lite
+Environment="SHSKM_REMOTE_CLI_TOKEN=change-this-token"
+Environment="SHSKM_REMOTE_CLI_REQUIRE_TOKEN=true"
+ExecStart=/root/UDP_gRPC_COM_Lite/.venv/bin/python -m remote_cli.server --host 0.0.0.0 --port 18090
+Restart=on-failure
+StandardOutput=append:/root/UDP_gRPC_COM_Lite/logs/remote_cli.log
+StandardError=append:/root/UDP_gRPC_COM_Lite/logs/remote_cli.log
+
+[Install]
+WantedBy=multi-user.target
+```
+```bash
+systemctl daemon-reload
+systemctl enable --now remote-cli
+systemctl status remote-cli
+```
+> ⚠️ Токен `change-this-token` — заглушка. Поменяй перед боевым использованием.
 
 **На клиенте** — RNS-конфиг `C:\Project\client_rns\config` (см. §1).
 
