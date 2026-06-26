@@ -1,8 +1,13 @@
-# RETICULUM_TESTING.md — как тестировать Reticulum-транспорт (этап 1)
+# RETICULUM_TESTING.md — как тестировать Reticulum-транспорт (этапы 1–3)
 
-Рабочая процедура e2e-теста: клиент `UDP_gRPC_COM_Lite` (Windows) ↔ HA-стек на
-VPS через **Reticulum**. Зафиксировано по факту успешного прогона 2026-06-23
-(`mi_th_sensor: T=23.5C H=45%`).
+Рабочая процедура e2e-теста: клиент `UDP_gRPC_COM_Lite` (Windows/macOS) ↔ HA-стек на
+VPS через **Reticulum**. Зафиксировано по факту успешных прогонов: round-trip
+2026-06-23 (`mi_th_sensor: T=23.5C H=45%`), стрим этапа 2 и **I2P (путь 2)** —
+2026-06-26. Три транспорта связи: прямой TCP (режим A), SSH-туннель (режим B),
+**I2P через нативные туннели i2pd (режим C / путь 2)** — см. §1.
+
+> Полная серверная/клиентская карта I2P-пути и грабли — в
+> [RETICULUM_VPS.md](RETICULUM_VPS.md) §12.
 
 ## 0. Что должно быть готово
 
@@ -17,6 +22,12 @@ journalctl -u ha-reticulum-bridge -n 5 --no-pager | grep destination
 ```
 Запомни `<BRIDGE_HASH>` (напр. `12bbf2cd888546cf78bc76112e0b3bbe`, актуальный на 2026-06-25).
 > ⚠️ Хэш меняется при пересоздании RNS-identity (переустановка `ha_stack`, удаление конфига). Всегда читай актуальный из `journalctl`.
+
+**Для режима C (I2P)** на VPS дополнительно поднят i2pd + server-туннель `ha-bridge`:
+```bash
+systemctl is-active i2pd                                                      # active
+curl -s "http://127.0.0.1:7070/?page=i2p_tunnels" | sed 's/<[^>]*>/ /g' | grep -i ha-bridge   # b32 моста
+```
 
 **Remote CLI gRPC сервер** — на VPS дополнительно поднят `remote_cli.server` из
 `~/UDP_gRPC_COM_Lite` (Python 3.11, `.venv`, `grpcio 1.81.1`, `protobuf 6.33.6`).
@@ -77,7 +88,7 @@ systemctl status remote-cli
 
 **На клиенте** — RNS-конфиг `C:\Project\client_rns\config` (см. §1).
 
-## 1. Два режима связи клиент↔мост
+## 1. Режимы связи клиент↔мост (A — прямой TCP, B — SSH-туннель, C — I2P)
 
 ### Режим A — прямое подключение (рабочий, для теста)
 Самый надёжный для проверки (без капризов SSH). На VPS мост слушает наружу:
@@ -118,6 +129,51 @@ ssh -N -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ExitOnForwardFailur
 - На некоторых хостерах (наш — Eurohoster) туннель всё равно флапал — тогда режим A
   или I2P.
 
+### Режим C — I2P через нативные туннели i2pd (путь 2, этап 3)
+Боевой анонимный путь, публичный порт наружу **не нужен**. ⚠️ НЕ используем RNS
+`I2PInterface` (через SAM) — он не работает (см. [RETICULUM_VPS.md](RETICULUM_VPS.md)
+§12.5). Вместо этого i2pd сам несёт I2P, а RNS ходит обычным TCP на localhost:
+
+```
+RNS ↔ TCP ↔ i2pd client-туннель ↔ I2P ↔ i2pd server-туннель ↔ TCP ↔ мост
+```
+
+**На VPS** — server-туннель i2pd заворачивает `TCPServerInterface 127.0.0.1:50061`
+в стабильный I2P-destination (`/etc/i2pd/tunnels.d/ha-bridge.conf`, ключи
+`ha-bridge.dat`). b32 моста:
+```bash
+curl -s "http://127.0.0.1:7070/?page=i2p_tunnels" | sed 's/<[^>]*>/ /g' | grep -i ha-bridge
+#   -> ha-bridge ⇒ x4utehodm3nezw5xb72nrdzhx3jestb2yqjdnbn46ljgzqd53aza.b32.i2p:50061
+```
+
+**На клиенте** — i2pd + client-туннель (SAM не нужен):
+```bash
+# macOS:
+brew install i2pd && brew services start i2pd
+# в $(brew --prefix)/etc/i2pd/tunnels.conf дописать:
+#   [ha-bridge-client]
+#   type = client
+#   address = 127.0.0.1
+#   port = 50061
+#   destination = x4utehodm3nezw5xb72nrdzhx3jestb2yqjdnbn46ljgzqd53aza.b32.i2p
+#   destinationport = 50061
+#   keys = ha-bridge-client.dat
+brew services restart i2pd        # поднимется local listener 127.0.0.1:50061
+```
+Клиентский RNS-конфиг указывает на **localhost** (i2pd сделает I2P сам):
+```
+[interfaces]
+  [[TCP Client Interface]]
+    type = TCPClientInterface
+    interface_enabled = yes
+    target_host = 127.0.0.1
+    target_port = 50061
+```
+> `--bridge-hash` тот же (`12bbf2cd…`, транспортно-независим). Меняется только то,
+> на какой `target_host` смотрит RNS: публичный IP (режим A) или localhost-туннель
+> i2pd (режим C). Первый коннект по I2P медленный (туннели строятся, leaseset
+> резолвится 1–5 мин). Команды теста — те же, что в §2.
+
 ## 2. Запуск клиента и тестовые команды
 
 ```powershell
@@ -140,9 +196,22 @@ cd C:\Project\ProjectPython\UDP_gRPC_COM_Lite
 ```
 Ожидание: 5 строк `event: mi_th_sensor type=EVENT_UNKNOWN ... payload='T=23.xC H=45%'`,
 затем `received 5 events`. (Стрим идёт по `RNS.Channel` на открытом Link.)
-> ✅ Проверено в проде 2026-06-26: режим A (мост `0.0.0.0:50061` + `iptables`,
-> публичный IP `138.226.221.219`), hash `12bbf2cd888546cf78bc76112e0b3bbe` —
-> 5 событий `mi_th_sensor` (`T=23.5→23.9C H=45%`).
+
+> **macOS-вариант команд** (пути и интерпретатор отличаются от Windows): из корня
+> `~/Project/ProjectPython/UDP_gRPC_COM_Lite`, интерпретатор `.venv/bin/python3`,
+> конфиги — `~/Project/client_rns` (режим A) и `~/Project/client_rns_i2p` (режим C).
+> ⚠️ В свежем venv поставь зависимости: `.venv/bin/pip install rns lxmf` (в
+> `requirements.txt` не закреплены). Пример (режим C, I2P):
+> ```bash
+> .venv/bin/python3 -m reticulum_transport.subscribe_demo \
+>   --bridge-hash 12bbf2cd888546cf78bc76112e0b3bbe --rns-config ~/Project/client_rns_i2p --block BU --max 5
+> ```
+
+> ✅ Проверено в проде 2026-06-26, hash `12bbf2cd888546cf78bc76112e0b3bbe`:
+> - **Режим A (TCP)**: мост `0.0.0.0:50061` + `iptables`, публичный IP
+>   `138.226.221.219` — 5 событий `mi_th_sensor` (`T=23.5→23.9C H=45%`).
+> - **Режим C (I2P, путь 2)**: client-туннель i2pd → b32 `x4utehodm…b32.i2p`,
+>   RNS на `127.0.0.1:50061` — стрим зелёный (Mac). Первый коннект медленный.
 
 ## 3. Важные грабли (чек-лист при ошибке)
 
@@ -152,7 +221,17 @@ cd C:\Project\ProjectPython\UDP_gRPC_COM_Lite
   путь к конфигу побит бэкслешами (`C:\...` → `C:...`). Используй прямые слеши:
   `--rns-config C:/Project/client_rns`.
 - **`WinError 10061` / `no path to bridge`** — нет связи до 50061: проверь режим
-  (A: `ufw`+`0.0.0.0`+IP клиента; B: туннель жив, IPv4-бинд, `Test-NetConnection`).
+  (A: `ufw`+`0.0.0.0`+IP клиента; B: туннель жив, IPv4-бинд, `Test-NetConnection`;
+  C: i2pd слушает `127.0.0.1:50061`, см. ниже).
+- **Режим C, `no path to bridge` сразу после рестарта i2pd** — на VPS пересоздался
+  leaseset моста, клиент держит истёкший (в логе i2pd `Lease is expired already` /
+  `Streaming: Resend … another remote lease`). Это переходное: подожди 1–5 мин
+  (республиш + резолв leaseset на молодом роутере) и повтори — у нас зазеленело с
+  3-й попытки. Проверка готовности i2pd на клиенте:
+  `curl -s http://127.0.0.1:7070/?page=i2p_tunnels | grep -i ha-bridge`.
+- **Режим C, локальный listener не поднят** — `lsof -nP -iTCP:50061 -sTCP:LISTEN`
+  должен показать `i2pd`. Нет → проверь блок `[ha-bridge-client]` в `tunnels.conf`
+  и `brew services restart i2pd`. SAM на клиенте для пути 2 **не нужен**.
 - **Singleton:** `RNS.Reticulum` — один на процесс. **Одна reticulum-команда на
   сессию CLI.** Для следующей — выйди и запусти CLI заново.
 - **Сравнение с TCP gRPC напрямую:** `--protocol grpc` шлёт на `localhost:50051`
