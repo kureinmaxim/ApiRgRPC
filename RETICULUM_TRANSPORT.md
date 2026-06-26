@@ -193,7 +193,12 @@ TCP/IP-транспорт.
 - ✅ Стаб `SubscribeEvents` (5 периодических событий), `GrpcCommandBackend.subscribe_events`
 - ✅ Клиент `ReticulumTransport.subscribe_events` + `subscribe_demo.py`
 - ✅ Loopback-тесты зелёные (мост: `test_event_stream.py`; клиент: `test_reticulum_subscribe.py`)
-- ⬜ Прогон стрима на VPS (после чистой переустановки ha_stack)
+- ✅ **Прогон стрима на боевом VPS (2026-06-26):** `subscribe_demo --block BU --max 5`
+  вернул 5 событий `mi_th_sensor` (`T=23.5→23.9C H=45%`) по `RNS.Channel` поверх
+  Link на удалённый VPS, затем `received 5 events`. Стрим `DeviceEvent` доказан в
+  проде. Режим A (мост `listen_ip=0.0.0.0` + `iptables --dport 50061`, прямой
+  публичный IP `138.226.221.219`); dest hash `12bbf2cd888546cf78bc76112e0b3bbe`,
+  стаб `SubscribeEvents` на `127.0.0.1:50055`.
 
 ### Этап 3 — I2P (позже)
 - ⬜ `i2pd` + SAM на VPS и локально

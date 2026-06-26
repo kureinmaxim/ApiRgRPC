@@ -140,6 +140,9 @@ cd C:\Project\ProjectPython\UDP_gRPC_COM_Lite
 ```
 Ожидание: 5 строк `event: mi_th_sensor type=EVENT_UNKNOWN ... payload='T=23.xC H=45%'`,
 затем `received 5 events`. (Стрим идёт по `RNS.Channel` на открытом Link.)
+> ✅ Проверено в проде 2026-06-26: режим A (мост `0.0.0.0:50061` + `iptables`,
+> публичный IP `138.226.221.219`), hash `12bbf2cd888546cf78bc76112e0b3bbe` —
+> 5 событий `mi_th_sensor` (`T=23.5→23.9C H=45%`).
 
 ## 3. Важные грабли (чек-лист при ошибке)
 
