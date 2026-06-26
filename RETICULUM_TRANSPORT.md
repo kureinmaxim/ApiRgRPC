@@ -200,10 +200,16 @@ TCP/IP-транспорт.
   публичный IP `138.226.221.219`); dest hash `12bbf2cd888546cf78bc76112e0b3bbe`,
   стаб `SubscribeEvents` на `127.0.0.1:50055`.
 
-### Этап 3 — I2P (позже)
-- ⬜ `i2pd` + SAM на VPS и локально
-- ⬜ Замена секции интерфейса RNS на `I2PInterface` (код не меняется)
-- ⬜ Round-trip и стрим зелёные поверх I2P
+### Этап 3 — I2P (e2e ✅ 2026-06-26)
+- ✅ `i2pd` на VPS (2.45.1) и на Mac (2.60.0)
+- ❌ RNS `I2PInterface` (через SAM) — **не работает**, отброшен (см.
+  [RETICULUM_VPS.md](RETICULUM_VPS.md) §12.5: `SAM API went offline` / `Bad file descriptor`)
+- ✅ **Путь 2 — нативные туннели i2pd:** server-туннель на VPS заворачивает
+  `TCPServerInterface 127.0.0.1:50061` → b32 `x4utehodm…b32.i2p`; на клиенте
+  client-туннель → RNS ходит обычным TCP на localhost. Код моста/клиента не меняется.
+- ✅ Стрим этапа 2 зелёный поверх I2P (Mac, 2026-06-26); hash моста `12bbf2cd…` тот же.
+- ⬜ Закрыть публичный TCP-порт 50061 (детали — RETICULUM_VPS.md §12.4)
+- Полная карта пути 2 и грабли — [RETICULUM_VPS.md](RETICULUM_VPS.md) §12, [I2P.md](I2P.md) §7.
 
 ### Этап 4 — продуктовый клиент
 - ⬜ Перенос паттерна отправителя в GUI-клиент ApiRgRPC (Win/macOS)

@@ -205,24 +205,20 @@ ApiRgRPC) шлёт прото по `RNS.Link`.
 |---|---|
 | 1 — PoC round-trip (`/device_control`, `/udp_raw`) по TCP | ✅ в проде |
 | 2 — стрим `DeviceEvent` по `RNS.Channel` | ✅ в проде (2026-06-26) |
-| 3 — I2P (убрать публичный порт) | 🟦 в работе: i2pd на VPS поднят (2.45.1, SAM 7656) ([I2P.md](I2P.md) §7) |
+| 3 — I2P | ✅ e2e зелёный (2026-06-26) через нативные туннели i2pd (путь 2, см. §12); ⬜ закрыть публичный TCP-порт (§12.4) |
 | 4 — device-control в GUI ApiRgRPC | ⬜ не начато |
 
 ---
 
 ## 10. Следующие шаги (живой раздел)
 
-**Этап 3 — I2P (в работе):**
-- ✅ i2pd + SAM (7656) на **VPS** (2.45.1); ⬜ i2pd на **Windows** (блокирует Defender).
-- ✅ `I2PInterface` добавлен в конфиг моста **рядом** с TCP (не заменяя пока);
-  загружается, подключается к SAM, создаёт destination.
-- 🟦 Дождаться готовности I2P-endpoint и **b32 моста** (свежий i2pd прогревается
-  30–60 мин; поднята полоса `bandwidth = P`). Подробности и грабли — [I2P.md](I2P.md) §7, §7.1.
-- ⬜ На клиенте — `I2PInterface` + `peers = <b32 моста>` в `C:\Project\client_rns\config`.
-- ⬜ Прогнать round-trip и стрим поверх I2P; убрать TCP-секцию, закрыть публичный порт 50061.
-
-> На время этапа 3 у моста подняты: `loglevel = 4` (чтобы видеть b32) и drop-in
-> `PYTHONUNBUFFERED=1` (чтобы лог RNS шёл в journal). См. [I2P.md](I2P.md) §7.1.
+**Этап 3 — I2P (e2e ✅, путь 2 — нативные туннели i2pd):**
+- ✅ i2pd на **VPS** (2.45.1) + **server-туннель** `ha-bridge` → b32
+  `x4utehodm…b32.i2p` (§12.2); на **Mac** i2pd 2.60.0 + **client-туннель** (§12.3-B).
+- ✅ Стрим этапа 2 прошёл поверх I2P; hash моста `12bbf2cd…` тот же.
+- ❌ Путь 1 (RNS `I2PInterface`/SAM) отброшен — не поднимается, см. §12.5.
+- ⬜ i2pd на **Windows** (для exe-клиента; блокирует Defender — но путь 2 без SAM).
+- ⬜ Закрыть публичный TCP-порт 50061 наружу (§12.4).
 
 **Эксплуатация / приведение в боевой вид:**
 - ⬜ Вернуть мост на `127.0.0.1` (режим B) или перейти на I2P — закрыть `0.0.0.0:50061`.
@@ -264,37 +260,62 @@ systemctl restart ha-reticulum-bridge
 
 ## 12. Хэндофф: продолжить с другого ПК (macOS) — снимок 2026-06-26
 
-> Этот раздел — точка возобновления работы. Снято на момент: этап 2 ✅ в проде,
-> этап 3 🟦 (i2pd на VPS поднят, ждём прогрев I2P-endpoint).
+> Этот раздел — точка возобновления работы. Обновлено 2026-06-26 (сессия macOS):
+> этап 2 ✅ в проде, **этап 3 — I2P e2e ✅ зелёный** через нативные туннели i2pd
+> (путь 2). Встроенный RNS `I2PInterface` (путь 1) отброшен — не работает, см. 12.5.
 
-### 12.1 Что сейчас крутится на VPS (временные правки этой сессии)
+### 12.0 Итог сессии (что сделано на Mac)
+- ✅ `git pull` обоих репо (`ApiRgRPC`, `UDP_gRPC_COM_Lite`).
+- ✅ **Режим A (прямой TCP)** с Mac — round-trip/стрим зелёные (5 событий).
+- ✅ **Этап 3, I2P e2e** — стрим этапа 2 прошёл **поверх I2P** через путь 2.
+- Архитектура пути 2 (RNS вообще не трогает SAM):
+  `RNS ↔ TCP ↔ i2pd client-туннель ↔ I2P ↔ i2pd server-туннель ↔ TCP ↔ bridge`.
+
+### 12.1 Что крутится на VPS
 - **Мост слушает `0.0.0.0:50061` (режим A)** — TCP-путь рабочий, доступен с любого
   ПК по публичному IP `138.226.221.219`. Хэш моста (транспортно-независим):
   **`12bbf2cd888546cf78bc76112e0b3bbe`**.
-- В конфиг моста `/opt/TelegramOnly/ha_stack/rns/config` добавлен `I2PInterface`
-  рядом с TCP; `loglevel = 4`.
-- Drop-in `Environment=PYTHONUNBUFFERED=1` для `ha-reticulum-bridge` (логи RNS в journal).
-- i2pd `2.45.1`, SAM `127.0.0.1:7656`, `bandwidth = P` (греется).
-- **TCP-путь работает прямо сейчас** — c Mac можно сразу гонять тесты по TCP, не
-  дожидаясь I2P (см. 12.3). I2P подключим, когда будет b32 (12.2).
+- i2pd `2.45.1`, `Network status: OK`, транспортный порт `15613`, SAM `127.0.0.1:7656`,
+  `bandwidth = P`.
+- **Server-туннель i2pd** `/etc/i2pd/tunnels.d/ha-bridge.conf` заворачивает
+  `127.0.0.1:50061` (мостовой `TCPServerInterface`) в стабильный I2P-destination
+  (ключи `ha-bridge.dat`). Это и даёт b32 (12.2).
+- RNS-секция `[[I2P]]` из конфига моста **удалена** (2026-06-26 cleanup) — она не
+  работала и спамила `SAM went offline` каждые ~26 мин (см. 12.5). Путь 2 её не
+  использует. Мост несёт только `TCPServerInterface 0.0.0.0:50061` (его и заворачивает
+  server-туннель i2pd). Также сняты отладочные `loglevel = 4`→`3` и drop-in
+  `PYTHONUNBUFFERED`.
+- **Оба транспорта верифицированы зелёными после чистки (2026-06-26):** прямой TCP
+  (`client_rns`) и I2P путь 2 (`client_rns_i2p`) — стрим этапа 2 даёт события на обоих.
 
-### 12.2 Шаг 1 — забрать b32 моста (когда I2P прогреется)
-🛰️ на VPS:
+### 12.2 b32 моста (server-туннель i2pd)
+**b32 моста = `x4utehodm3nezw5xb72nrdzhx3jestb2yqjdnbn46ljgzqd53aza.b32.i2p`** (порт `:50061`).
+Проверить/получить заново на VPS:
 ```bash
-journalctl -u ha-reticulum-bridge --since "60 min ago" --no-pager | grep -iE 'endpoint ready|\.i2p|b32' | tail
-curl -s "http://127.0.0.1:7070/" | sed 's/<[^>]*>/ /g' | grep -iE 'tunnel creation|leaseset'
-curl -s "http://127.0.0.1:7070/?page=local_destinations" | sed 's/<[^>]*>/ /g' | grep -iE '\.b32\.i2p'
+curl -s "http://127.0.0.1:7070/?page=i2p_tunnels" | sed 's/<[^>]*>/ /g' | grep -iE 'ha-bridge|\.b32'
 ```
-Готовность: `LeaseSets ≥ 1` + строка `endpoint ready … <b32>`. Запиши b32 сюда:
-**b32 моста = `<заполнить>`**.
+Стабилен между рестартами (ключи `ha-bridge.dat`).
 
-### 12.3 Шаг 2 — клиент на macOS
-Репозитории на Mac (синхронизировать `git pull`):
-- `ApiRgRPC` (этот репо, доки/мост): `git pull` в локальной копии.
-- `UDP_gRPC_COM_Lite` (CLI-клиент, `~/Project/ProjectPython/UDP_gRPC_COM_Lite`,
-  venv `.venv/bin/python3`).
+Конфиг server-туннеля на VPS (`/etc/i2pd/tunnels.d/ha-bridge.conf`):
+```ini
+[ha-bridge]
+type = server
+host = 127.0.0.1
+port = 50061
+keys = ha-bridge.dat
+inbound.length = 2
+outbound.length = 2
+inbound.quantity = 3
+outbound.quantity = 3
+```
 
-**A) Сразу по TCP (работает уже сейчас, без i2pd):** создать `~/Project/client_rns/config`:
+### 12.3 Клиент на macOS — оба пути рабочие
+Репозитории: `ApiRgRPC` (доки) и `UDP_gRPC_COM_Lite`
+(`~/Project/ProjectPython/UDP_gRPC_COM_Lite`, venv `.venv/bin/python3`).
+> ⚠️ В venv не было `rns`/`lxmf` (в `requirements.txt` не закреплены) — поставить:
+> `.venv/bin/pip install rns lxmf` (стоят `rns 1.3.5`, `lxmf 1.0.1`).
+
+**A) Прямой TCP** — `~/Project/client_rns/config`:
 ```ini
 [reticulum]
   enable_transport = No
@@ -306,40 +327,68 @@ curl -s "http://127.0.0.1:7070/?page=local_destinations" | sed 's/<[^>]*>/ /g' |
     target_host = 138.226.221.219
     target_port = 50061
 ```
-Тест (стрим этапа 2) — из корня `UDP_gRPC_COM_Lite`:
 ```bash
 .venv/bin/python3 -m reticulum_transport.subscribe_demo \
   --bridge-hash 12bbf2cd888546cf78bc76112e0b3bbe --rns-config ~/Project/client_rns --block BU --max 5
 ```
 Ожидание: 5 событий `mi_th_sensor`, `received 5 events`.
 
-**B) По I2P (когда есть b32):** на macOS поставить i2pd (без Defender-трений):
+**B) По I2P (путь 2)** — i2pd + client-туннель, RNS ходит по TCP на localhost:
 ```bash
-brew install i2pd
-# включить SAM: в $(brew --prefix)/etc/i2pd/i2pd.conf секция [sam] enabled = true (порт 7656)
+brew install i2pd            # 2.60.0
 brew services start i2pd
-# проверить: nc -z 127.0.0.1 7656  (SAM слушает)
 ```
-Клиентский `~/Project/client_rns/config` — заменить TCP-секцию на I2P:
+В `$(brew --prefix)/etc/i2pd/tunnels.conf` дописать client-туннель:
+```ini
+[ha-bridge-client]
+type = client
+address = 127.0.0.1
+port = 50061
+destination = x4utehodm3nezw5xb72nrdzhx3jestb2yqjdnbn46ljgzqd53aza.b32.i2p
+destinationport = 50061
+keys = ha-bridge-client.dat
+```
+`brew services restart i2pd` → поднимется local listener `127.0.0.1:50061`.
+> SAM на Mac **не нужен** (путь 2 не использует SAM). `Network status: Firewalled`
+> у клиента — норма (нужны только исходящие туннели). Свежий i2pd прогревается
+> 3–7 мин (reseed + туннели), первый коннект медленный.
+
+Отдельный RNS-конфиг `~/Project/client_rns_i2p/config` (route A не трогаем):
 ```ini
 [reticulum]
   enable_transport = No
   share_instance = No
 [interfaces]
-  [[I2P]]
-    type = I2PInterface
+  [[TCP Client Interface]]
+    type = TCPClientInterface
     interface_enabled = yes
-    peers = <b32 моста из 12.2>
+    target_host = 127.0.0.1
+    target_port = 50061
 ```
-> Хэш моста `--bridge-hash 12bbf2cd…` **тот же** (он транспортно-независим);
-> меняется только секция интерфейса + `peers`. Первый коннект по I2P медленный
-> (строятся туннели 30–120 c). Команда теста — та же, что в (A).
+```bash
+.venv/bin/python3 -m reticulum_transport.subscribe_demo \
+  --bridge-hash 12bbf2cd888546cf78bc76112e0b3bbe --rns-config ~/Project/client_rns_i2p --block BU --max 5
+```
+Команда и hash моста **те же** — отличается только `--rns-config` (через какой
+конфиг RNS подключаться: прямой TCP или localhost-туннель i2pd). ✅ Проверено зелёным.
 
-### 12.4 Финал этапа 3 (после зелёного I2P e2e)
-- Убрать TCP-секцию из конфига моста, закрыть публичный порт:
-  `sed -i 's/listen_ip = 0.0.0.0/listen_ip = 127.0.0.1/' …/rns/config; iptables -D INPUT -p tcp --dport 50061 -j ACCEPT; systemctl restart ha-reticulum-bridge`
-  (I2P наружу TCP не слушает — публичный порт больше не нужен).
+### 12.4 Финал этапа 3 (закрыть TCP наружу)
+После того как I2P-путь устраивает по стабильности:
+- Закрыть публичный порт, оставив мост слушать на `127.0.0.1` (i2pd server-туннель
+  всё равно ходит на `127.0.0.1:50061`):
+  `iptables -D INPUT -p tcp --dport 50061 -j ACCEPT` (+ при желании
+  `sed -i 's/listen_ip = 0.0.0.0/listen_ip = 127.0.0.1/' …/rns/config; systemctl restart ha-reticulum-bridge`).
 - Обновить чек-листы: [I2P.md](I2P.md) §7, [RETICULUM_TRANSPORT.md](RETICULUM_TRANSPORT.md) §7.
+
+### 12.5 Почему отказались от RNS `I2PInterface` (путь 1)
+Встроенный `type = I2PInterface` (bundled i2plib через SAM) на этом стеке
+**не поднимается**: endpoint висит в «Bringing up I2P endpoint» по ~26 мин и падает
+с `[Errno 9] Bad file descriptor` → `SAM API went offline` → `Resetting I2P tunnel`
+(SAM-control-сокет рвётся, i2pd сносит туннели destination → leaseset не публикуется).
+Воспроизводится при здоровом i2pd (`Network status: OK`, SAM 7656 жив) и
+актуальных `RNS 1.3.5` / Python 3.11. Лечения версией нет (RNS уже последний).
+**Вывод:** I2P делаем нативными туннелями i2pd (путь 2) — RNS общается обычным TCP
+с локальным туннелем, i2plib не задействован.
 
 ---
 
