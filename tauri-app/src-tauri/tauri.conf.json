@@ -25,7 +25,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "category": "Network",
+    "category": "Utility",
     "shortDescription": "Reticulum (RNS/LXMF) client",
     "longDescription": "Censorship-resistant Reticulum messaging client. Tauri shell + Python RNS engine.",
     "icon": [
@@ -35,6 +35,6 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": []
+    "resources": ["rns-engine*"]
   }
 }
