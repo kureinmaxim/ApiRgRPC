@@ -66,3 +66,41 @@ pub fn engine_send(
         "title": title.unwrap_or_default(),
     }))
 }
+
+// ---- device-control (HA-мост по RNS) ---------------------------------------
+
+#[tauri::command]
+pub fn engine_dev_hash(state: State<AppState>, hash: String) -> Result<(), String> {
+    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+    engine.send(serde_json::json!({"cmd": "dev_hash", "hash": hash}))
+}
+
+#[tauri::command]
+pub fn engine_dev_status(state: State<AppState>) -> Result<(), String> {
+    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+    engine.send(serde_json::json!({"cmd": "dev_status"}))
+}
+
+#[tauri::command]
+pub fn engine_dev_ping(state: State<AppState>) -> Result<(), String> {
+    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+    engine.send(serde_json::json!({"cmd": "dev_ping"}))
+}
+
+#[tauri::command]
+pub fn engine_dev_read(state: State<AppState>, device: String) -> Result<(), String> {
+    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+    engine.send(serde_json::json!({"cmd": "dev_read", "device": device}))
+}
+
+#[tauri::command]
+pub fn engine_dev_write(state: State<AppState>, device: String, on: bool) -> Result<(), String> {
+    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+    engine.send(serde_json::json!({"cmd": "dev_write", "device": device, "on": on}))
+}
+
+#[tauri::command]
+pub fn engine_dev_stream(state: State<AppState>, max: Option<u32>) -> Result<(), String> {
+    let mut engine = state.engine.lock().map_err(|e| e.to_string())?;
+    engine.send(serde_json::json!({"cmd": "dev_stream", "max": max.unwrap_or(5)}))
+}

@@ -52,6 +52,28 @@
         </div>
       </section>
 
+      <section class="card devctrl">
+        <div class="card-title">Device-control (HA‑мост по RNS)</div>
+        <div class="row">
+          <input id="dev-hash" class="mono" placeholder="hex‑hash моста (32 симв.)" />
+          <button id="btn-dev-hash" class="btn">Задать мост</button>
+          <button id="btn-dev-status" class="btn">Статус</button>
+        </div>
+        <div id="dev-status-line" class="muted">мост не задан</div>
+        <div class="row">
+          <input id="dev-device" placeholder="устройство" value="mi_th_sensor" />
+          <button id="btn-dev-read" class="btn">Read</button>
+          <button id="btn-dev-write-on" class="btn">Write on</button>
+          <button id="btn-dev-write-off" class="btn">Write off</button>
+        </div>
+        <div class="row">
+          <button id="btn-dev-ping" class="btn primary">Ping</button>
+          <button id="btn-dev-stream" class="btn">Stream</button>
+          <input id="dev-stream-max" type="number" min="1" value="5" class="num" />
+          <span class="muted">событий</span>
+        </div>
+      </section>
+
       <section class="card log">
         <div class="card-title">Журнал</div>
         <div id="log" class="logbox mono"></div>

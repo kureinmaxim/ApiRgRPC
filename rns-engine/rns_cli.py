@@ -34,14 +34,7 @@ import rns_engine  # noqa: E402  (переопределяем его emit ни�
 try:
     import RNS  # noqa: E402
     from proto import device_control_pb2 as pb  # noqa: E402
-    from bridge.bridge import (  # noqa: E402
-        APP_NAME,
-        ASPECTS,
-        REQUEST_PATH,
-        REQUEST_PATH_UDP,
-        DeviceEventMessage,
-        SubscribeMessage,
-    )
+    from device_control import DeviceControl  # noqa: E402
 except Exception as exc:  # pragma: no cover - import guard
     sys.stderr.write(f"rns_cli: не удалось импортировать зависимости: {exc}\n"
                      f"Поставь их: pip install -r requirements.txt\n")
@@ -92,104 +85,8 @@ def _cli_emit(obj: dict) -> None:
 rns_engine.emit = _cli_emit
 
 
-# --------------------------------------------------------------------------- #
-#  Device-control клиент к HA-мосту (переиспользует запущенный RNS singleton)
-# --------------------------------------------------------------------------- #
-def _block(name: str):
-    return getattr(pb.BlockType, (name or "BU").upper(), pb.BlockType.BU)
-
-
-class DeviceControl:
-    def __init__(self, bridge_hash_hex: str = "", timeout: float = 20.0):
-        self.timeout = timeout
-        self.bridge_hash = bytes.fromhex(bridge_hash_hex) if bridge_hash_hex else None
-
-    def _open_link(self):
-        if not self.bridge_hash:
-            raise ValueError("bridge hash не задан — `dev hash <hex>` или --bridge-hash")
-        h = self.bridge_hash
-        if not RNS.Transport.has_path(h):
-            RNS.Transport.request_path(h)
-            deadline = time.time() + self.timeout
-            while not RNS.Transport.has_path(h) and time.time() < deadline:
-                time.sleep(0.1)
-        if not RNS.Transport.has_path(h):
-            raise TimeoutError("нет пути к мосту (transport прогревается / мост недоступен?)")
-        identity = RNS.Identity.recall(h)
-        if identity is None:
-            raise TimeoutError("не удалось получить identity моста")
-        dest = RNS.Destination(identity, RNS.Destination.OUT, RNS.Destination.SINGLE, APP_NAME, *ASPECTS)
-        link = RNS.Link(dest)
-        deadline = time.time() + self.timeout
-        while link.status != RNS.Link.ACTIVE and time.time() < deadline:
-            time.sleep(0.1)
-        if link.status != RNS.Link.ACTIVE:
-            raise TimeoutError("link не активировался")
-        return link
-
-    def _request(self, path: str, data: bytes) -> bytes:
-        link = self._open_link()
-        result, done = {}, threading.Event()
-        link.request(
-            path, data=data,
-            response_callback=lambda r: (result.__setitem__("resp", r.response), done.set()),
-            failed_callback=lambda r: done.set(),
-        )
-        ok = done.wait(timeout=self.timeout)
-        try:
-            link.teardown()
-        except Exception:
-            pass
-        if not ok or "resp" not in result:
-            raise TimeoutError("нет ответа от моста")
-        return result["resp"]
-
-    def command(self, device_id: str, code, *, led=None, payload=None, block="BU"):
-        kw = {"block_type": _block(block), "device_id": device_id, "command_code": code}
-        if led is not None:
-            kw["set_led_state"] = pb.SetLedStatePayload(state=led)
-        elif payload is not None:
-            kw["generic_payload"] = payload
-        req = pb.CommandRequest(**kw)
-        resp = pb.CommandResponse()
-        resp.ParseFromString(self._request(REQUEST_PATH, req.SerializeToString()))
-        return resp
-
-    def raw(self, data: bytes) -> bytes:
-        return self._request(REQUEST_PATH_UDP, data)
-
-    def stream(self, max_events: int = 5, block: str = "BU", timeout: float = 30.0) -> int:
-        link = self._open_link()
-        channel = link.get_channel()
-        channel.register_message_type(SubscribeMessage)
-        channel.register_message_type(DeviceEventMessage)
-        state, done = {"n": 0}, threading.Event()
-
-        def on_msg(msg):
-            if isinstance(msg, DeviceEventMessage):
-                ev = pb.DeviceEvent()
-                ev.ParseFromString(msg.data)
-                payload = ev.payload.decode("utf-8", "replace") if ev.payload else ""
-                _p(f"event: {ev.device_id} type={pb.EventType.Name(ev.event_type)} "
-                   f"ts={ev.timestamp_unix_ms} payload='{payload}'")
-                state["n"] += 1
-                if max_events and state["n"] >= max_events:
-                    done.set()
-                return True
-            return False
-
-        channel.add_message_handler(on_msg)
-        deadline = time.time() + 10
-        while not channel.is_ready_to_send() and time.time() < deadline:
-            time.sleep(0.05)
-        req = pb.EventSubscribeRequest(block_type=_block(block))
-        channel.send(SubscribeMessage(req.SerializeToString()))
-        done.wait(timeout=timeout)
-        try:
-            link.teardown()
-        except Exception:
-            pass
-        return state["n"]
+# Device-control клиент к HA-мосту живёт в общем модуле device_control.py
+# (его же использует sidecar rns_engine.py). Здесь только REPL-обёртка.
 
 
 # --------------------------------------------------------------------------- #
@@ -276,7 +173,13 @@ def _handle_dev(dc: DeviceControl, args: list) -> None:
     elif sub == "stream":
         n = int(args[1]) if len(args) > 1 and args[1].isdigit() else 5
         _p(f"подписка на DeviceEvent (max={n})…")
-        got = dc.stream(max_events=n)
+
+        def _on_ev(ev):
+            payload = ev.payload.decode("utf-8", "replace") if ev.payload else ""
+            _p(f"event: {ev.device_id} type={pb.EventType.Name(ev.event_type)} "
+               f"ts={ev.timestamp_unix_ms} payload='{payload}'")
+
+        got = dc.stream(_on_ev, max_events=n)
         _p(f"received {got} events")
     else:
         _p(f"dev: неизвестная подкоманда '{sub}' (см. help)")

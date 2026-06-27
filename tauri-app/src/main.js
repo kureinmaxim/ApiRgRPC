@@ -23,6 +23,18 @@ const els = {
   msgText: $("msg-text"),
   send: $("btn-send"),
   log: $("log"),
+  // device-control
+  devHash: $("dev-hash"),
+  devHashSet: $("btn-dev-hash"),
+  devStatusBtn: $("btn-dev-status"),
+  devStatusLine: $("dev-status-line"),
+  devDevice: $("dev-device"),
+  devRead: $("btn-dev-read"),
+  devWriteOn: $("btn-dev-write-on"),
+  devWriteOff: $("btn-dev-write-off"),
+  devPing: $("btn-dev-ping"),
+  devStream: $("btn-dev-stream"),
+  devStreamMax: $("dev-stream-max"),
 };
 
 const peers = new Map(); // hash -> name
@@ -94,6 +106,29 @@ listen("rns-event", (event) => {
     case "error":
       logLine("ОШИБКА: " + e.message, "l-err");
       break;
+    case "dev_hash":
+      els.devStatusLine.textContent = `мост: ${e.hash || "(не задан)"}`;
+      logLine(`HA-мост задан: ${e.hash}`, "l-muted");
+      break;
+    case "dev_status": {
+      const path = e.has_path ? `да${e.hops != null ? ` (hops=${e.hops})` : ""}` : "нет";
+      els.devStatusLine.textContent = `мост: ${e.hash || "—"} · путь: ${path}`;
+      break;
+    }
+    case "dev_result": {
+      const tag = `[${e.action}]`;
+      if (e.action === "ping") {
+        logLine(`${tag} ${e.ok ? "✅" : "❌"} ${e.ms ?? "?"} ms: ${e.message}`, e.ok ? "l-ok" : "l-err");
+      } else if (e.action === "read") {
+        logLine(`${tag} ${e.device}: ${e.message}${e.read_data ? " · data=" + e.read_data : ""}`, e.ok ? "l-ok" : "l-err");
+      } else {
+        logLine(`${tag} ${e.message}`, e.ok ? "l-ok" : "l-err");
+      }
+      break;
+    }
+    case "dev_event":
+      logLine(`event ${e.device} ${e.type} ts=${e.ts} '${e.payload}'`, "l-rx");
+      break;
     default:
       logLine(JSON.stringify(e));
   }
@@ -143,6 +178,33 @@ els.send.onclick = async () => {
 };
 
 els.msgText.addEventListener("keydown", (e) => { if (e.key === "Enter") els.send.click(); });
+
+// ---- device-control ---------------------------------------------------------
+const devInvoke = (cmd, args = {}) => invoke(cmd, args).catch((e) => logLine(String(e), "l-err"));
+
+els.devHashSet.onclick = () => {
+  const hash = els.devHash.value.trim();
+  if (hash) devInvoke("engine_dev_hash", { hash });
+};
+els.devStatusBtn.onclick = () => devInvoke("engine_dev_status");
+els.devPing.onclick = () => { logLine("dev ping…", "l-muted"); devInvoke("engine_dev_ping"); };
+els.devRead.onclick = () => {
+  const device = els.devDevice.value.trim();
+  if (device) devInvoke("engine_dev_read", { device });
+};
+els.devWriteOn.onclick = () => {
+  const device = els.devDevice.value.trim();
+  if (device) devInvoke("engine_dev_write", { device, on: true });
+};
+els.devWriteOff.onclick = () => {
+  const device = els.devDevice.value.trim();
+  if (device) devInvoke("engine_dev_write", { device, on: false });
+};
+els.devStream.onclick = () => {
+  const max = parseInt(els.devStreamMax.value, 10) || 5;
+  logLine(`dev stream (max=${max})…`, "l-muted");
+  devInvoke("engine_dev_stream", { max });
+};
 
 // ---- init -------------------------------------------------------------------
 (async () => {

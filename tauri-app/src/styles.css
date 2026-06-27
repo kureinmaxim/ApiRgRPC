@@ -81,6 +81,7 @@ input {
 }
 input:focus { border-color: var(--accent); }
 .mono { font-family: var(--mono); }
+.num { flex: 0 0 64px; max-width: 64px; text-align: center; }
 
 .btn {
   background: var(--bg-elevated);

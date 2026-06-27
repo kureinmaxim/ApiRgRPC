@@ -15,6 +15,13 @@ Commands  (received on STDIN, one JSON object per line):
     {"cmd": "send", "peer": "<hex hash>", "text": "hello", "title": ""}
     {"cmd": "ping", "peer": "<hex hash>"}
     {"cmd": "shutdown"}
+  Device-control к HA-мосту (опционально, общий контракт с bridge/):
+    {"cmd": "dev_hash", "hash": "<hex>"}
+    {"cmd": "dev_status"}
+    {"cmd": "dev_ping"}
+    {"cmd": "dev_read", "device": "mi_th_sensor"}
+    {"cmd": "dev_write", "device": "mi_bulb", "on": true}
+    {"cmd": "dev_stream", "max": 5}
 
 Events    (emitted on STDOUT, one JSON object per line):
     {"event": "ready",    "address": "<hex>", "name": "..."}
@@ -25,6 +32,10 @@ Events    (emitted on STDOUT, one JSON object per line):
     {"event": "sent",     "peer": "<hex>", "state": "delivered|failed|outbound"}
     {"event": "log",      "level": "info|warn|error", "message": "..."}
     {"event": "error",    "message": "..."}
+    {"event": "dev_hash",   "hash": "<hex>"}
+    {"event": "dev_status", "hash": "<hex>", "has_path": bool, "hops": N}
+    {"event": "dev_result", "action": "ping|read|write|stream", "ok": bool, "message": "...", ...}
+    {"event": "dev_event",  "device": "...", "type": "...", "ts": N, "payload": "..."}
 
 Run standalone for testing:
     pip install rns lxmf
@@ -48,6 +59,21 @@ except Exception as exc:  # pragma: no cover - import guard
     }) + "\n")
     sys.stdout.flush()
     sys.exit(1)
+
+# device-control к HA-мосту — опционально (общий модуль с rns_cli.py). Каталог
+# движка в sys.path, чтобы proto/ и bridge/ резолвились независимо от cwd
+# (Tauri запускает движок из src-tauri/).
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+try:
+    from device_control import DeviceControl
+    from proto import device_control_pb2 as pb
+    _DC_AVAILABLE = True
+except Exception:  # proto/bridge недоступны — мессенджер всё равно работает
+    DeviceControl = None
+    pb = None
+    _DC_AVAILABLE = False
 
 
 APP_NAME = "apirgrpc"
@@ -96,6 +122,9 @@ class Engine:
         RNS.Transport.register_announce_handler(_AnnounceHandler(self))
 
         self.address_hex = self.local.hash.hex()
+
+        # device-control к HA-мосту (опционально; общий RNS-инстанс).
+        self.dc = DeviceControl(os.environ.get("RETICULUM_BRIDGE_HASH", "")) if _DC_AVAILABLE else None
 
     # ---- inbound -----------------------------------------------------------
     def _on_message(self, message) -> None:
@@ -187,6 +216,103 @@ class Engine:
         self.router.handle_outbound(lxm)
         emit({"event": "sent", "peer": peer_hex, "state": "outbound"})
 
+    # ---- device-control (HA-мост по RNS) -----------------------------------
+    def _dc_guard(self) -> bool:
+        if self.dc is None:
+            emit({"event": "error", "message": "device-control недоступен (нет proto/bridge)"})
+            return False
+        return True
+
+    def _dc_async(self, fn) -> None:
+        # Длинные операции (link + request/stream) — в фоне, чтобы не блокировать
+        # цикл чтения stdin (мессенджер остаётся отзывчивым).
+        threading.Thread(target=fn, daemon=True).start()
+
+    def cmd_dev_hash(self, hash_hex: str) -> None:
+        if not self._dc_guard():
+            return
+        try:
+            self.dc.set_hash(hash_hex)
+            emit({"event": "dev_hash", "hash": hash_hex})
+        except ValueError:
+            emit({"event": "error", "message": f"bad bridge hash: {hash_hex}"})
+
+    def cmd_dev_status(self) -> None:
+        if not self._dc_guard():
+            return
+        h = self.dc.bridge_hash
+        emit({"event": "dev_status", "hash": h.hex() if h else "",
+              "has_path": self.dc.has_path(), "hops": self.dc.hops()})
+
+    def cmd_dev_ping(self) -> None:
+        if not self._dc_guard():
+            return
+
+        def work():
+            t0 = time.time()
+            try:
+                resp = self.dc.command("mi_th_sensor", pb.CommandCode.READ)
+                ok = resp.status == pb.CommandResponse.Status.SUCCESS
+                emit({"event": "dev_result", "action": "ping", "ok": ok,
+                      "ms": int((time.time() - t0) * 1000), "message": resp.message})
+            except Exception as exc:
+                emit({"event": "dev_result", "action": "ping", "ok": False,
+                      "ms": int((time.time() - t0) * 1000), "message": str(exc)})
+
+        self._dc_async(work)
+
+    def cmd_dev_read(self, device: str) -> None:
+        if not self._dc_guard():
+            return
+
+        def work():
+            try:
+                resp = self.dc.command(device, pb.CommandCode.READ)
+                ok = resp.status == pb.CommandResponse.Status.SUCCESS
+                emit({"event": "dev_result", "action": "read", "device": device, "ok": ok,
+                      "message": resp.message,
+                      "read_data": resp.read_data.hex() if resp.read_data else ""})
+            except Exception as exc:
+                emit({"event": "dev_result", "action": "read", "device": device,
+                      "ok": False, "message": str(exc)})
+
+        self._dc_async(work)
+
+    def cmd_dev_write(self, device: str, on: bool) -> None:
+        if not self._dc_guard():
+            return
+
+        def work():
+            try:
+                resp = self.dc.command(device, pb.CommandCode.WRITE, led=bool(on))
+                ok = resp.status == pb.CommandResponse.Status.SUCCESS
+                emit({"event": "dev_result", "action": "write", "device": device,
+                      "ok": ok, "message": resp.message})
+            except Exception as exc:
+                emit({"event": "dev_result", "action": "write", "device": device,
+                      "ok": False, "message": str(exc)})
+
+        self._dc_async(work)
+
+    def cmd_dev_stream(self, max_events: int = 5) -> None:
+        if not self._dc_guard():
+            return
+
+        def work():
+            def on_ev(ev):
+                payload = ev.payload.decode("utf-8", "replace") if ev.payload else ""
+                emit({"event": "dev_event", "device": ev.device_id,
+                      "type": pb.EventType.Name(ev.event_type),
+                      "ts": ev.timestamp_unix_ms, "payload": payload})
+            try:
+                n = self.dc.stream(on_ev, max_events=max_events)
+                emit({"event": "dev_result", "action": "stream", "ok": True,
+                      "count": n, "message": f"received {n} events"})
+            except Exception as exc:
+                emit({"event": "dev_result", "action": "stream", "ok": False, "message": str(exc)})
+
+        self._dc_async(work)
+
 
 class _AnnounceHandler:
     """Surfaces other LXMF delivery destinations as they announce."""
@@ -248,6 +374,18 @@ def main() -> None:
                 engine.cmd_set_name(msg.get("name", ""))
             elif cmd == "send":
                 engine.cmd_send(msg.get("peer", ""), msg.get("text", ""), msg.get("title", ""))
+            elif cmd == "dev_hash":
+                engine.cmd_dev_hash(msg.get("hash", ""))
+            elif cmd == "dev_status":
+                engine.cmd_dev_status()
+            elif cmd == "dev_ping":
+                engine.cmd_dev_ping()
+            elif cmd == "dev_read":
+                engine.cmd_dev_read(msg.get("device", ""))
+            elif cmd == "dev_write":
+                engine.cmd_dev_write(msg.get("device", ""), bool(msg.get("on", False)))
+            elif cmd == "dev_stream":
+                engine.cmd_dev_stream(int(msg.get("max", 5)))
             elif cmd == "shutdown":
                 log("shutting down")
                 break
