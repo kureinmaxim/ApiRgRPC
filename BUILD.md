@@ -77,17 +77,23 @@ bash build_engine.sh
 cp dist/rns-engine* ../tauri-app/src-tauri/
 ```
 
-и в `tauri-app/src-tauri/tauri.conf.json` указать его в bundle:
+В `tauri-app/src-tauri/tauri.conf.json` бандл движка уже прописан:
 
 ```json
 "bundle": {
+  "category": "Utility",
   "resources": ["rns-engine*"]
 }
 ```
 
-(Сейчас `resources: []` — для релиза заполнить.) В релизе `engine.rs` сначала
-ищет `rns-engine(.exe)` в resource-каталоге и только при отсутствии падает на
-dev-fallback `python`.
+Поэтому достаточно положить бинарь в `src-tauri/` (шаг выше) — отдельно
+править конфиг не нужно. В релизе `engine.rs` сначала ищет `rns-engine(.exe)` в
+resource-каталоге и только при отсутствии падает на dev-fallback `python`.
+
+> ⚠️ Раз `resources` указывает на `rns-engine*`, **`tauri build` упадёт, если
+> бинарь не собран/не скопирован** в `src-tauri/` — поэтому сначала §2, потом
+> сборка. (`tauri dev` ресурсы не бандлит, поэтому работает и без бинаря —
+> движок берётся через python-fallback.)
 
 ---
 
@@ -95,7 +101,7 @@ dev-fallback `python`.
 
 ```bash
 cd rns-engine && bash build_engine.sh && cp dist/rns-engine ../tauri-app/src-tauri/ && cd ..
-# (один раз выставить resources: ["rns-engine*"] в tauri.conf.json)
+# resources/category в tauri.conf.json уже настроены — править не нужно
 
 cd tauri-app
 npm install
