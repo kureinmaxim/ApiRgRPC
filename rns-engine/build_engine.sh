@@ -10,6 +10,10 @@ python -m pip install pyinstaller
 pyinstaller --onefile --name rns-engine \
   --collect-all RNS \
   --collect-all LXMF \
+  --paths . \
+  --hidden-import device_control \
+  --hidden-import proto.device_control_pb2 \
+  --hidden-import bridge.bridge \
   rns_engine.py
 
 echo

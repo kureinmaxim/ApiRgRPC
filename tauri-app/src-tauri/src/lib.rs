@@ -37,6 +37,8 @@ pub fn run() {
             commands::engine_dev_read,
             commands::engine_dev_write,
             commands::engine_dev_stream,
+            commands::engine_set_config,
+            commands::engine_get_config,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

@@ -36,6 +36,20 @@
         <div id="status-line" class="muted">—</div>
       </section>
 
+      <section class="card ifaces">
+        <div class="card-title">Интерфейсы (RNS)</div>
+        <div class="row">
+          <input id="if-tcp-host" class="mono" placeholder="TCP host (IP моста/VPS)" />
+          <input id="if-tcp-port" type="number" min="1" value="50061" class="num" />
+        </div>
+        <div class="row">
+          <label class="chk"><input id="if-i2p" type="checkbox" /> I2P (локальный i2pd)</label>
+          <input id="if-i2p-port" type="number" min="1" value="50061" class="num" />
+          <button id="btn-if-apply" class="btn primary">Применить и перезапустить</button>
+        </div>
+        <div class="muted">Записывает RNS-config приложения. Применяется при перезапуске движка. Оба пути можно включить вместе (RNS выберет рабочий).</div>
+      </section>
+
       <section class="card peers">
         <div class="card-title">Пиры (анонсы LXMF) <span id="peers-count" class="pill">0</span></div>
         <ul id="peers-list" class="list"></ul>

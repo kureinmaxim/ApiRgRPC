@@ -35,6 +35,12 @@ const els = {
   devPing: $("btn-dev-ping"),
   devStream: $("btn-dev-stream"),
   devStreamMax: $("dev-stream-max"),
+  // interfaces
+  ifTcpHost: $("if-tcp-host"),
+  ifTcpPort: $("if-tcp-port"),
+  ifI2p: $("if-i2p"),
+  ifI2pPort: $("if-i2p-port"),
+  ifApply: $("btn-if-apply"),
 };
 
 const peers = new Map(); // hash -> name
@@ -206,6 +212,45 @@ els.devStream.onclick = () => {
   devInvoke("engine_dev_stream", { max });
 };
 
+// ---- interfaces (RNS config) ------------------------------------------------
+els.ifApply.onclick = async () => {
+  const tcpHost = els.ifTcpHost.value.trim();
+  const tcpPort = parseInt(els.ifTcpPort.value, 10) || 50061;
+  const useI2p = els.ifI2p.checked;
+  const i2pPort = parseInt(els.ifI2pPort.value, 10) || 50061;
+  if (!tcpHost && !useI2p) { logLine("укажи TCP host и/или включи I2P", "l-warn"); return; }
+  try {
+    const path = await invoke("engine_set_config", {
+      tcpHost, tcpPort, useI2p, i2pPort,
+    });
+    logLine("RNS-config записан: " + path, "l-ok");
+    // Перезапуск движка, чтобы интерфейсы применились.
+    const running = await invoke("engine_is_running").catch(() => false);
+    if (running) {
+      logLine("перезапуск движка для применения интерфейсов…", "l-muted");
+      await invoke("engine_stop").catch(() => {});
+      setRunning(false);
+      await invoke("engine_start", { name: els.name.value || "ApiRgRPC" });
+    } else {
+      logLine("интерфейсы применятся при следующем запуске движка", "l-muted");
+    }
+  } catch (err) {
+    logLine("ошибка записи config: " + err, "l-err");
+  }
+};
+
+async function prefillInterfaces() {
+  try {
+    const text = await invoke("engine_get_config");
+    if (!text) return;
+    const host = text.match(/target_host\s*=\s*([^\s]+)/);
+    const port = text.match(/target_port\s*=\s*([0-9]+)/);
+    if (host && host[1] !== "127.0.0.1") els.ifTcpHost.value = host[1];
+    if (port) els.ifTcpPort.value = port[1];
+    if (/\[\[I2P\]\]/.test(text)) els.ifI2p.checked = true;
+  } catch (_) { /* нет config — ладно */ }
+}
+
 // ---- init -------------------------------------------------------------------
 (async () => {
   try {
@@ -215,5 +260,6 @@ els.devStream.onclick = () => {
   } catch (_) {
     setRunning(false);
   }
-  logLine("UI готов. Нажми «Запустить», чтобы поднять Reticulum-движок.", "l-muted");
+  prefillInterfaces();
+  logLine("UI готов. Задай интерфейс (TCP/I2P) и нажми «Запустить».", "l-muted");
 })();

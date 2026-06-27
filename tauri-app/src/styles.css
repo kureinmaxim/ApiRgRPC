@@ -82,6 +82,8 @@ input {
 input:focus { border-color: var(--accent); }
 .mono { font-family: var(--mono); }
 .num { flex: 0 0 64px; max-width: 64px; text-align: center; }
+.chk { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); white-space: nowrap; }
+.chk input { flex: 0 0 auto; }
 
 .btn {
   background: var(--bg-elevated);
