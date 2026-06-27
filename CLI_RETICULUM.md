@@ -95,6 +95,26 @@ python -m reticulum_transport.subscribe_demo \
 > Полный перечень клиентских CLI-флагов — `CLI_COMMANDS_GUIDE.md` в
 > `UDP_gRPC_COM_Lite` (раздел «Reticulum-транспорт»).
 
+### Лаунчер + удобные HA-команды (UDP_gRPC_COM_Lite)
+
+В стартовом окне приложения (macOS-лаунчер «Select Mode») есть группа
+**«Reticulum transport»**: Enable + TCP и/или I2P + bridge hash / TCP host:port /
+I2P порт+b32. На старте лаунчер генерит RNS-конфиг (`~/.shskm/client_rns`) и
+выставляет `$RETICULUM_BRIDGE_HASH`/`$RETICULUM_CONFIG`/`$RETICULUM_DEFAULT`, так
+что `device send` и `send` по умолчанию идут по Reticulum.
+
+Внутри CLI — всё под командой `reticulum` (HA-доступ + управление транспортом):
+```bash
+reticulum devices                  # HA-устройства (mi_bulb / mi_th_sensor / mi_vibration)
+reticulum read mi_th_sensor        # READ → T=23.5C H=45%
+reticulum write mi_bulb --led on   # WRITE → power=on
+reticulum stream --block BU --max 5 # поток DeviceEvent
+reticulum ping                     # round-trip health (+ latency)
+reticulum status                   # bridge hash / конфиг / путь (hops)
+reticulum reconnect                # ре-резолв пути к мосту без рестарта
+```
+> `ha` — отдельная команда (Home Automation), не путать с `reticulum`-подкомандами.
+
 ---
 
 ## 3. Типовой сценарий
